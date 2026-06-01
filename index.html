@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,minimum-scale=1,user-scalable=no,viewport-fit=cover" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
 <link rel="icon" href="data:," />
@@ -10,7 +10,9 @@
 <style>
   :root { --bg:#0f1115; --panel:#181c24; --line:#2a2f3a; --text:#e7eaf0; --muted:#8a93a6; --accent:#4c8dff; --good:#37c26b; --bad:#ff5d5d; --off:#3a3f4d; }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  html,body { margin:0; padding:0; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif; -webkit-text-size-adjust:100%; }
+  html,body { margin:0; padding:0; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif; -webkit-text-size-adjust:100%; touch-action:manipulation; overscroll-behavior:none; }
+  /* Disable iOS callout/selection feel for buttons & cells; keep text inputs selectable */
+  button, .cell, .day .dayLabel { -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
   body { padding:14px 14px 140px; max-width:760px; margin:0 auto; }
   h1 { font-size:20px; margin:0 0 12px; display:flex; align-items:center; justify-content:space-between; }
   h2 { font-size:13px; margin:18px 0 8px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; }
@@ -100,9 +102,10 @@
   <details>
     <summary>Reference photo (optional)</summary>
     <label class="file-btn">
-      Tap to add a photo of the schedule for reference
-      <input type="file" id="fileInput" accept="image/*" capture="environment" />
+      Tap to add a photo or scan for reference
+      <input type="file" id="fileInput" accept="image/*" />
     </label>
+    <div class="hint">Tip: for an auto-cropped scan, use iOS <b>Notes → camera icon → Scan Documents</b>, save to Photos, then upload here.</div>
     <img id="refImg" alt="" />
   </details>
 </div>
@@ -125,7 +128,7 @@
     <button id="copyBtn">Copy summary</button>
     <button id="icsBtn" class="secondary">Download .ics</button>
   </div>
-  <div class="hint">On iOS: tap the downloaded <code>.ics</code> → opens in Calendar → choose calendar → Add All.</div>
+  <div class="hint">On iOS: the share sheet opens → tap <b>Calendar</b> → Add All. (Falls back to download if share isn't available.)</div>
 </div>
 
 <!-- Picker modal -->
@@ -187,7 +190,7 @@ function loadGlobals(){
 loadGlobals();
 loadWeek();
 
-$("rateInput").addEventListener("change", () => { saveAll(); recompute(); });
+$("rateInput").addEventListener("input", () => { saveAll(); recompute(); });
 $("weekStart").addEventListener("change", () => { loadWeek(); });
 $("clearWeekBtn").addEventListener("click", () => {
   if(!confirm("Clear all shifts for this week?")) return;
@@ -378,7 +381,7 @@ $("copyBtn").addEventListener("click", async () => {
   } catch { alert("Copy failed — long-press the summary text instead."); }
 });
 
-$("icsBtn").addEventListener("click", () => {
+$("icsBtn").addEventListener("click", async () => {
   const ws = new Date($("weekStart").value + "T00:00:00");
   const events = [];
   for(let i=0; i<14; i++){
@@ -401,9 +404,25 @@ $("icsBtn").addEventListener("click", () => {
     lines.push("BEGIN:VEVENT","UID:"+uid,"SUMMARY:"+ev.title,"DTSTART:"+fmt(ev.start),"DTEND:"+fmt(ev.end),"END:VEVENT");
   }
   lines.push("END:VCALENDAR");
-  const blob = new Blob([lines.join("\r\n")], {type:"text/calendar"});
+  const icsText = lines.join("\r\n");
+  const fileName = `schedule-${ws.toISOString().slice(0,10)}.ics`;
+  const file = new File([icsText], fileName, { type:"text/calendar" });
+
+  // Prefer the iOS share sheet — Calendar is one tap from there.
+  if(navigator.canShare && navigator.canShare({ files:[file] })){
+    try {
+      await navigator.share({ files:[file], title:"Work schedule" });
+      return;
+    } catch(err){
+      if(err.name === "AbortError") return; // user dismissed; don't fall back
+      console.warn("Share failed, falling back to download:", err);
+    }
+  }
+
+  // Fallback: download
+  const blob = new Blob([icsText], {type:"text/calendar"});
   const url = URL.createObjectURL(blob);
-  const a = document.createElement("a"); a.href = url; a.download = "schedule.ics";
+  const a = document.createElement("a"); a.href = url; a.download = fileName;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(url), 1000);
 });
