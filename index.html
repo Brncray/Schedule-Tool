@@ -4,6 +4,8 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<link rel="icon" href="data:," />
 <title>Schedule Scanner</title>
 <style>
   :root { --bg:#0f1115; --panel:#181c24; --line:#2a2f3a; --text:#e7eaf0; --muted:#8a93a6; --accent:#4c8dff; --good:#37c26b; --bad:#ff5d5d; }
@@ -173,12 +175,19 @@ async function scan(){
   });
 
   try {
-    // Pass 1: find the name's row using full alphabet
+    // Pass 1: find the name's row using full alphabet.
+    // Upscale first — Tesseract needs ~30px tall text for reliable reads, and
+    // phone photos of a full page often have rows only 20-30px tall.
+    progress.textContent = "Preparing image…";
+    const upscaled = upscaleImage(sourceImage, 2400); // target long edge
     progress.textContent = "Looking for your name…";
-    const full = await worker.recognize(sourceImage);
+    const full = await worker.recognize(upscaled);
+    console.log("Pass 1 full text:", full.data.text);
     const rowBox = findNameRow(full.data, targetName);
     if(!rowBox){
-      progress.textContent = "Couldn't find your name. Try a clearer photo or check the name field.";
+      // Show what OCR actually saw so user can see why it missed.
+      const snippet = (full.data.text || "").split("\n").filter(l=>l.trim()).slice(0,30).join(" | ");
+      progress.textContent = "Name not found. OCR saw: " + snippet.slice(0, 300) + "…";
       $("matchPill").textContent = "not found";
       await worker.terminate();
       scanBtn.disabled = false;
@@ -186,11 +195,11 @@ async function scan(){
     }
     $("matchPill").textContent = `matched "${rowBox.matchedText}"`;
 
-    // Crop row: full image width, just the row's vertical band, with padding
-    const pad = Math.round((rowBox.y1 - rowBox.y0) * 0.15);
+    // Crop row from the UPSCALED image (bbox coords match upscaled).
+    const pad = Math.round((rowBox.y1 - rowBox.y0) * 0.20);
     const ry0 = Math.max(0, rowBox.y0 - pad);
-    const ry1 = Math.min(sourceImage.naturalHeight, rowBox.y1 + pad);
-    const rowCanvas = cropCanvas(sourceImage, 0, ry0, sourceImage.naturalWidth, ry1 - ry0);
+    const ry1 = Math.min(upscaled.height, rowBox.y1 + pad);
+    const rowCanvas = cropCanvas(upscaled, 0, ry0, upscaled.width, ry1 - ry0);
     $("rowPreview").src = rowCanvas.toDataURL();
     $("rowPreview").style.display = "block";
 
@@ -234,42 +243,104 @@ async function scan(){
   }
 }
 
-// Find the row containing the target name. Tesseract gives us .lines with bbox.
+// Find the row containing the target name. Uses substring + fuzzy matching
+// because OCR routinely misreads characters in small text (Brendon → Brendcn, etc).
 function findNameRow(data, target){
   const norm = s => s.toLowerCase().replace(/[^a-z]/g,"");
   const t = norm(target);
   if(!t) return null;
-  // Try several fragments — last name alone is most distinctive
   const parts = target.split(/\s+/).filter(Boolean);
-  const last = parts[parts.length-1] || target;
-  const tryTokens = [t, norm(last), norm(parts[0]||"")];
+  const last = norm(parts[parts.length-1] || target);
+  const first = norm(parts[0] || "");
 
   const lines = data.lines || [];
-  let best = null;
+
+  // Tier 1: exact substring of full name or last name (>=4 chars)
   for(const line of lines){
     const ln = norm(line.text);
     if(!ln) continue;
-    for(const tok of tryTokens){
-      if(tok.length < 3) continue;
-      if(ln.includes(tok)){
-        // Locate the name token's bbox within the line by scanning words
-        const nameWords = (line.words||[]).filter(w => norm(w.text).length>0);
-        let x0=line.bbox.x0, x1=line.bbox.x0, y0=line.bbox.y0, y1=line.bbox.y1;
-        // Find rightmost word that's still part of the name (first 2-3 words usually)
-        if(nameWords.length){
-          // assume first 1-3 words are the name
-          const takeN = Math.min(nameWords.length, parts.length);
-          x0 = nameWords[0].bbox.x0;
-          x1 = nameWords[takeN-1].bbox.x1;
-          y0 = Math.min(...nameWords.slice(0,takeN).map(w=>w.bbox.y0));
-          y1 = Math.max(...nameWords.slice(0,takeN).map(w=>w.bbox.y1));
-        }
-        const match = { x0, x1, y0, y1, matchedText: line.text.trim().slice(0,40) };
-        if(!best || tok === t) { best = match; if(tok===t) return best; }
+    if(t.length >= 4 && ln.includes(t)) return makeMatch(line, parts);
+  }
+  for(const line of lines){
+    const ln = norm(line.text);
+    if(!ln) continue;
+    if(last.length >= 4 && ln.includes(last)) return makeMatch(line, parts);
+  }
+
+  // Tier 2: fuzzy match on last name (Levenshtein ratio).
+  // Slide a window over each line and find the best similarity to last name.
+  let best = null;
+  for(const line of lines){
+    const ln = norm(line.text);
+    if(!ln || last.length < 4) continue;
+    for(let i=0; i<=ln.length-last.length; i++){
+      const sub = ln.slice(i, i + last.length);
+      const sim = 1 - lev(sub, last) / last.length;
+      if(sim >= 0.7 && (!best || sim > best.sim)){
+        best = { sim, line };
       }
     }
   }
-  return best;
+  if(best) return makeMatch(best.line, parts);
+
+  // Tier 3: same fuzzy match on first name as last resort
+  for(const line of lines){
+    const ln = norm(line.text);
+    if(!ln || first.length < 4) continue;
+    for(let i=0; i<=ln.length-first.length; i++){
+      const sub = ln.slice(i, i + first.length);
+      const sim = 1 - lev(sub, first) / first.length;
+      if(sim >= 0.75 && (!best || sim > (best?.sim||0))){
+        best = { sim, line };
+      }
+    }
+  }
+  return best ? makeMatch(best.line, parts) : null;
+}
+
+function makeMatch(line, parts){
+  const norm = s => s.toLowerCase().replace(/[^a-z]/g,"");
+  const nameWords = (line.words||[]).filter(w => norm(w.text).length>0);
+  let x0=line.bbox.x0, x1=line.bbox.x0, y0=line.bbox.y0, y1=line.bbox.y1;
+  if(nameWords.length){
+    const takeN = Math.min(nameWords.length, Math.max(parts.length, 2));
+    x0 = nameWords[0].bbox.x0;
+    x1 = nameWords[takeN-1].bbox.x1;
+    y0 = Math.min(...nameWords.slice(0,takeN).map(w=>w.bbox.y0));
+    y1 = Math.max(...nameWords.slice(0,takeN).map(w=>w.bbox.y1));
+  }
+  return { x0, x1, y0, y1, matchedText: line.text.trim().slice(0,40) };
+}
+
+// Levenshtein distance (small strings only — fine here).
+function lev(a, b){
+  const m = a.length, n = b.length;
+  if(!m) return n; if(!n) return m;
+  let prev = new Array(n+1); for(let j=0;j<=n;j++) prev[j]=j;
+  for(let i=1;i<=m;i++){
+    const cur = [i];
+    for(let j=1;j<=n;j++){
+      const cost = a[i-1]===b[j-1] ? 0 : 1;
+      cur[j] = Math.min(cur[j-1]+1, prev[j]+1, prev[j-1]+cost);
+    }
+    prev = cur;
+  }
+  return prev[n];
+}
+
+// Upscale image so long edge ~= targetLong. Returns a canvas Tesseract accepts.
+function upscaleImage(img, targetLong){
+  const long = Math.max(img.naturalWidth, img.naturalHeight);
+  const scale = Math.max(1, targetLong / long);
+  const w = Math.round(img.naturalWidth * scale);
+  const h = Math.round(img.naturalHeight * scale);
+  const c = document.createElement("canvas");
+  c.width = w; c.height = h;
+  const ctx = c.getContext("2d");
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(img, 0, 0, w, h);
+  return c;
 }
 
 function cropCanvas(img, x, y, w, h){
