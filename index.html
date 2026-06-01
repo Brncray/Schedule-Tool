@@ -18,11 +18,11 @@
   h2 { font-size:13px; margin:18px 0 8px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; }
   .panel { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:14px; }
   label { display:block; font-size:13px; color:var(--muted); margin-bottom:6px; }
-  input[type="text"], input[type="number"], input[type="date"] {
+  input[type="text"], input[type="number"], input[type="date"], select {
     width:100%; padding:11px 12px; font-size:16px; border:1px solid var(--line); border-radius:10px;
     background:#0c0f15; color:var(--text); outline:none;
   }
-  input:focus { border-color:var(--accent); }
+  input:focus, select:focus { border-color:var(--accent); }
   button { background:var(--accent); color:white; border:0; padding:12px 14px; font-size:15px; border-radius:10px; font-weight:600; cursor:pointer; }
   button.secondary { background:#2a2f3a; }
   button.ghost { background:transparent; color:var(--text); border:1px solid var(--line); }
@@ -43,6 +43,7 @@
     display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
   }
   .cell .kind { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; font-weight:500; }
+  .cell .resolved { font-size:10px; color:var(--muted); font-weight:500; font-variant-numeric:tabular-nums; }
   .cell.has { color:var(--accent); border-color:#2a3a5e; }
   .cell.off { color:var(--muted); }
 
@@ -129,6 +130,11 @@
       <input type="date" id="weekStart" />
     </div>
   </div>
+  <div class="row" style="margin-top:10px">
+    <button class="secondary" id="prevWeekBtn" type="button">‹ Prev week</button>
+    <button class="ghost" id="copyPrevBtn" type="button">Copy last week</button>
+    <button class="secondary" id="nextWeekBtn" type="button">Next week ›</button>
+  </div>
 </div>
 
 <!-- Sticky cropped reference strip (shown after crop is saved) -->
@@ -176,6 +182,30 @@
 </div>
 
 <div class="panel">
+  <h2 style="margin-top:0">Pay period</h2>
+  <div class="row">
+    <div>
+      <label>Period type</label>
+      <select id="periodType">
+        <option value="weekly">Weekly</option>
+        <option value="biweekly">Biweekly</option>
+        <option value="semi">Semi-monthly (1–15 / 16–end)</option>
+        <option value="monthly">Monthly</option>
+      </select>
+    </div>
+    <div id="anchorWrap">
+      <label>Biweekly anchor (a Mon)</label>
+      <input type="date" id="periodAnchor" />
+    </div>
+  </div>
+  <div class="stat" style="margin-top:10px"><span id="periodRangeLabel">Period</span><b id="periodHours">0 h</b></div>
+  <div class="stat"><span>Estimated pay (before tax)</span><b id="periodPay">$0.00</b></div>
+  <div class="stat"><span>Shifts</span><b id="periodShifts">0</b></div>
+  <h2>By week</h2>
+  <div class="summary" id="periodBreakdown"></div>
+</div>
+
+<div class="panel">
   <h2 style="margin-top:0">Totals</h2>
   <div class="stat"><span>Total hours</span><b id="totalHours">0</b></div>
   <div class="stat"><span>Estimated pay (before tax)</span><b id="totalPay">$0.00</b></div>
@@ -219,22 +249,28 @@ const $ = id => document.getElementById(id);
 // State
 let cells = Array(14).fill(""); // 14 strings: "" / "OFF" / "9-5" / "9:30-5"
 let presets = ["9-5","5-11","11-5","9-4","OFF"];
+let payPeriodType = "biweekly";       // weekly | biweekly | semi | monthly
+let payPeriodAnchor = "";             // ISO date (a Monday) that anchors biweekly periods
 
 // Persistence
 function weekKey(){ return "wk:" + ($("weekStart").value || "?"); }
 function saveAll(){
   localStorage.setItem("rate", $("rateInput").value);
   localStorage.setItem("presets", JSON.stringify(presets));
+  localStorage.setItem("payPeriodType", payPeriodType);
+  localStorage.setItem("payPeriodAnchor", payPeriodAnchor);
   localStorage.setItem(weekKey(), JSON.stringify(cells));
 }
 function loadWeek(){
   const raw = localStorage.getItem(weekKey());
   cells = raw ? JSON.parse(raw) : Array(14).fill("");
-  renderDays(); recompute();
+  renderDays(); recompute(); recomputePeriod();
 }
 function loadGlobals(){
   const rate = localStorage.getItem("rate"); if(rate) $("rateInput").value = rate;
   const ps = localStorage.getItem("presets"); if(ps){ try { presets = JSON.parse(ps); } catch{} }
+  const pt = localStorage.getItem("payPeriodType"); if(pt) payPeriodType = pt;
+  const pa = localStorage.getItem("payPeriodAnchor"); if(pa) payPeriodAnchor = pa;
 }
 
 // Initial week-start = most recent Monday
@@ -247,10 +283,53 @@ function loadGlobals(){
 })();
 
 loadGlobals();
+
+// Pay-period controls — default the biweekly anchor to the current week's Monday.
+(function initPayPeriodUI(){
+  if(!payPeriodAnchor) payPeriodAnchor = $("weekStart").value;
+  $("periodType").value = payPeriodType;
+  $("periodAnchor").value = payPeriodAnchor;
+  $("anchorWrap").style.display = payPeriodType === "biweekly" ? "" : "none";
+})();
+
 loadWeek();
 
-$("rateInput").addEventListener("input", () => { saveAll(); recompute(); });
+$("rateInput").addEventListener("input", () => { saveAll(); recompute(); recomputePeriod(); });
 $("weekStart").addEventListener("change", () => { loadWeek(); });
+
+$("periodType").addEventListener("change", () => {
+  payPeriodType = $("periodType").value;
+  $("anchorWrap").style.display = payPeriodType === "biweekly" ? "" : "none";
+  saveAll(); recomputePeriod();
+});
+$("periodAnchor").addEventListener("change", () => {
+  payPeriodAnchor = $("periodAnchor").value || $("weekStart").value;
+  $("periodAnchor").value = payPeriodAnchor;
+  saveAll(); recomputePeriod();
+});
+
+// Week navigation + copy-last-week (fast entry)
+function shiftWeekBy(deltaDays){
+  const cur = new Date($("weekStart").value + "T00:00:00");
+  if(isNaN(cur)) return;
+  cur.setDate(cur.getDate() + deltaDays);
+  $("weekStart").value = cur.toISOString().slice(0,10);
+  loadWeek();
+}
+$("prevWeekBtn").addEventListener("click", () => shiftWeekBy(-7));
+$("nextWeekBtn").addEventListener("click", () => shiftWeekBy(7));
+$("copyPrevBtn").addEventListener("click", () => {
+  const cur = new Date($("weekStart").value + "T00:00:00");
+  if(isNaN(cur)) return;
+  const prev = new Date(cur); prev.setDate(prev.getDate() - 7);
+  const raw = localStorage.getItem("wk:" + prev.toISOString().slice(0,10));
+  if(!raw){ alert("No shifts saved for the previous week."); return; }
+  let prevCells; try { prevCells = JSON.parse(raw); } catch { return; }
+  if(!Array.isArray(prevCells)) return;
+  if(cells.some(Boolean) && !confirm("Overwrite this week with last week's shifts?")) return;
+  cells = prevCells.slice();
+  saveAll(); renderDays(); recompute(); recomputePeriod();
+});
 $("clearWeekBtn").addEventListener("click", () => {
   if(!confirm("Clear all shifts for this week?")) return;
   cells = Array(14).fill(""); saveAll(); renderDays(); recompute();
@@ -276,7 +355,16 @@ function renderDays(){
       const btn = document.createElement("button");
       btn.className = "cell";
       const v = cells[idx];
-      btn.innerHTML = `<span class="kind">${s===0?"Day":"Night"}</span><span class="val">${v || "—"}</span>`;
+      let sub = "";
+      if(v && v !== "OFF"){
+        const p = parseShift(v);
+        if(p){
+          const t = resolveTimes(p, s===1), h = shiftHours(t);
+          if(h > 0 && h <= 16) sub = `${fmt12(t.startMin)}–${fmt12(t.endMin)}`;
+        }
+      }
+      btn.innerHTML = `<span class="kind">${s===0?"Day":"Night"}</span><span class="val">${v || "—"}</span>` +
+        (sub ? `<span class="resolved">${sub}</span>` : "");
       if(v && v !== "OFF") btn.classList.add("has");
       if(v === "OFF") btn.classList.add("off");
       btn.addEventListener("click", () => openPicker(idx));
@@ -389,27 +477,126 @@ function parseShift(raw){
     eh: parseInt(m[3],10), em: m[4] ? parseInt(m[4],10) : 0
   };
 }
+// Resolve a raw shift into absolute minutes from midnight of the shift's calendar
+// day. endMin may exceed 1440 when the shift crosses midnight (night shifts).
+// AM/PM is inferred from the Day/Night column, so the result is then displayed
+// back to the user (see fmt12) as a guard against a wrong inference.
 function resolveTimes(p, isNight){
   let { sh, sm, eh, em } = p;
+  let startH, endH;
   if(!isNight){
-    let start = sh, end = eh;
-    if(end < start) end += 12;
-    return { startH:start, startM:sm, endH:end, endM:em, crossesMidnight:false };
+    // Day column: start is morning-ish, end is afternoon-ish.
+    startH = sh;                         // 9 -> 9am, 12 -> noon
+    endH = eh;
+    if(endH <= startH) endH += 12;       // 9-5 -> 09:00..17:00
   } else {
-    let start = sh < 12 ? sh + 12 : sh;
-    let end = eh;
-    if(end < 12 && start >= 18){
-      return { startH:start, startM:sm, endH:end, endM:em, crossesMidnight:true };
+    // Night column: start is in the evening.
+    startH = (sh < 12) ? sh + 12 : sh;   // 5 -> 17, 11 -> 23, 12 -> 12 (noon)
+    if(eh === 12){
+      endH = 24;                         // "12" as a night end = midnight
+    } else {
+      const endPM = (eh < 12) ? eh + 12 : eh;
+      if(endPM > startH){
+        endH = endPM;                    // ends the same evening (e.g. 5-11 -> ..23:00)
+      } else {
+        endH = (eh === 0 ? 24 : eh + 24);// ends next morning -> crosses midnight
+      }
     }
-    if(end < start) end += 12;
-    return { startH:start, startM:sm, endH:end, endM:em, crossesMidnight:false };
   }
+  return { startMin: startH*60 + sm, endMin: endH*60 + em };
 }
-function shiftHours(t){
-  const startMins = t.startH*60 + t.startM;
-  const endMins = t.endH*60 + t.endM;
-  const mins = t.crossesMidnight ? (24*60 - startMins) + endMins : endMins - startMins;
-  return mins / 60;
+function shiftHours(t){ return (t.endMin - t.startMin) / 60; }
+
+// Format absolute minutes-from-midnight as a short 12h clock, e.g. 1020 -> "5p", 1410 -> "11:30p".
+function fmt12(mins){
+  const h = Math.floor(mins/60) % 24, m = mins % 60;
+  const ap = h < 12 ? "a" : "p";
+  let hh = h % 12; if(hh === 0) hh = 12;
+  return hh + (m ? ":" + String(m).padStart(2,"0") : "") + ap;
+}
+
+// Expand a week's 14 cells into dated, resolved shifts (shared by week + period totals).
+function shiftsForWeek(wsDate, cellArr){
+  const out = [];
+  for(let i=0; i<14; i++){
+    const p = parseShift(cellArr[i]); if(!p) continue;
+    const t = resolveTimes(p, i%2===1);
+    const h = shiftHours(t);
+    if(h <= 0 || h > 16) continue;
+    const date = new Date(wsDate); date.setDate(date.getDate() + Math.floor(i/2));
+    out.push({ idx:i, date, t, h, raw:cellArr[i], isNight:i%2===1 });
+  }
+  return out;
+}
+
+// Every dated shift across all stored weeks (used for pay-period totals).
+function allStoredShifts(){
+  const res = [];
+  for(let k=0; k<localStorage.length; k++){
+    const key = localStorage.key(k);
+    if(!key || !key.startsWith("wk:")) continue;
+    const iso = key.slice(3); if(iso === "?") continue;
+    const ws = new Date(iso + "T00:00:00"); if(isNaN(ws)) continue;
+    let arr; try { arr = JSON.parse(localStorage.getItem(key)); } catch { continue; }
+    if(!Array.isArray(arr)) continue;
+    res.push(...shiftsForWeek(ws, arr));
+  }
+  return res;
+}
+
+// === Pay-period range ===
+function startOfDay(d){ const x = new Date(d); x.setHours(0,0,0,0); return x; }
+function monday(d){
+  const x = startOfDay(d);
+  x.setDate(x.getDate() - ((x.getDay() + 6) % 7));
+  return x;
+}
+function fmtMD(d){ return (d.getMonth()+1) + "/" + d.getDate(); }
+function payPeriodRange(ref){
+  const r = startOfDay(ref);
+  if(payPeriodType === "weekly"){
+    const s = monday(r); const e = new Date(s); e.setDate(e.getDate()+6);
+    return { s, e };
+  }
+  if(payPeriodType === "monthly"){
+    return { s:new Date(r.getFullYear(), r.getMonth(), 1),
+             e:new Date(r.getFullYear(), r.getMonth()+1, 0) };
+  }
+  if(payPeriodType === "semi"){
+    if(r.getDate() <= 15) return { s:new Date(r.getFullYear(), r.getMonth(), 1),
+                                   e:new Date(r.getFullYear(), r.getMonth(), 15) };
+    return { s:new Date(r.getFullYear(), r.getMonth(), 16),
+             e:new Date(r.getFullYear(), r.getMonth()+1, 0) };
+  }
+  // biweekly: two-week windows aligned to the anchor Monday.
+  const anchor = monday(new Date((payPeriodAnchor || $("weekStart").value) + "T00:00:00"));
+  const refMon = monday(r);
+  const weeks = Math.round((refMon - anchor) / (7*24*3600*1000));
+  const s = new Date(anchor); s.setDate(s.getDate() + Math.floor(weeks/2)*14);
+  const e = new Date(s); e.setDate(e.getDate()+13);
+  return { s, e };
+}
+function recomputePeriod(){
+  const ref = new Date($("weekStart").value + "T00:00:00");
+  if(isNaN(ref)) return;
+  const { s, e } = payPeriodRange(ref);
+  const rate = parseFloat($("rateInput").value) || 0;
+  const shifts = allStoredShifts().filter(x => x.date >= s && x.date <= e);
+  let total = 0; const byWeek = {};
+  for(const sh of shifts){
+    total += sh.h;
+    const wk = monday(sh.date).toISOString().slice(0,10);
+    byWeek[wk] = (byWeek[wk] || 0) + sh.h;
+  }
+  $("periodRangeLabel").textContent = fmtMD(s) + " – " + fmtMD(e);
+  $("periodHours").textContent = total.toFixed(2) + " h";
+  $("periodPay").textContent = "$" + (total * rate).toFixed(2);
+  $("periodShifts").textContent = shifts.length;
+  const lines = Object.keys(byWeek).sort().map(w => {
+    const d = new Date(w + "T00:00:00");
+    return `Wk ${fmtMD(d).padEnd(6)} ${byWeek[w].toFixed(2).padStart(6)} h   $${(byWeek[w]*rate).toFixed(2)}`;
+  });
+  $("periodBreakdown").textContent = lines.join("\n") || "(no shifts in this period)";
 }
 
 function recompute(){
@@ -417,16 +604,12 @@ function recompute(){
   const rate = parseFloat($("rateInput").value) || 0;
   let total = 0, count = 0;
   const lines = [];
-  for(let i=0; i<14; i++){
-    const p = parseShift(cells[i]); if(!p) continue;
-    const t = resolveTimes(p, i%2===1);
-    const h = shiftHours(t);
-    if(h <= 0 || h > 16) continue;
-    total += h; count++;
-    const date = new Date(ws); date.setDate(date.getDate() + Math.floor(i/2));
-    const lbl = `${DAYS[Math.floor(i/2)]} ${date.getMonth()+1}/${date.getDate()}`;
-    const kind = i%2===0 ? "Day" : "Night";
-    lines.push(`${lbl.padEnd(10)} ${kind.padEnd(5)} ${cells[i].padEnd(8)} ${h.toFixed(2)}h`);
+  for(const sh of shiftsForWeek(ws, cells)){
+    total += sh.h; count++;
+    const lbl = `${DAYS[Math.floor(sh.idx/2)]} ${fmtMD(sh.date)}`;
+    const kind = sh.isNight ? "Night" : "Day";
+    const clock = `${fmt12(sh.t.startMin)}–${fmt12(sh.t.endMin)}`;
+    lines.push(`${lbl.padEnd(10)} ${kind.padEnd(5)} ${clock.padEnd(13)} ${sh.h.toFixed(2)}h`);
   }
   $("totalHours").textContent = total.toFixed(2);
   $("totalPay").textContent = "$" + (total * rate).toFixed(2);
@@ -448,15 +631,12 @@ $("copyBtn").addEventListener("click", async () => {
 $("icsBtn").addEventListener("click", async () => {
   const ws = new Date($("weekStart").value + "T00:00:00");
   const events = [];
-  for(let i=0; i<14; i++){
-    const p = parseShift(cells[i]); if(!p) continue;
-    const t = resolveTimes(p, i%2===1);
-    const h = shiftHours(t); if(h<=0||h>16) continue;
-    const start = new Date(ws); start.setDate(start.getDate()+Math.floor(i/2));
-    start.setHours(t.startH, t.startM, 0, 0);
-    const end = new Date(start);
-    end.setMinutes(end.getMinutes() + Math.round(h*60));
-    events.push({ start, end, title:`Work (${i%2===0?"Day":"Night"})` });
+  for(const sh of shiftsForWeek(ws, cells)){
+    const start = new Date(sh.date); start.setHours(0,0,0,0);
+    start.setMinutes(sh.t.startMin);
+    const end = new Date(sh.date); end.setHours(0,0,0,0);
+    end.setMinutes(sh.t.endMin);
+    events.push({ start, end, title:`Work (${sh.isNight?"Night":"Day"})` });
   }
   if(!events.length){ alert("No shifts to export."); return; }
   const fmt = d => d.getFullYear() + String(d.getMonth()+1).padStart(2,"0") +
