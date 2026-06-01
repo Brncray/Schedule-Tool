@@ -128,23 +128,25 @@
   /* Sticky cropped reference strip — visible while picking shifts */
   #refStrip {
     position:sticky; top:0; z-index:30;
-    background:var(--bg); padding:8px 0 9px;
+    background:var(--bg); padding:10px 14px 11px;
     border-bottom:1px solid var(--line); margin:-18px -14px 14px;
-    display:flex; flex-direction:column; gap:6px;
+    display:flex; flex-direction:column; gap:9px;
   }
   #refStripScroller {
     overflow-x:auto; overflow-y:hidden;
     -webkit-overflow-scrolling:touch; touch-action:pan-x;
-    background:#000; border-radius:0;
-    padding:0 14px;
+    background:#06090f; border:1px solid var(--line); border-radius:12px;
+    padding:0;
   }
   /* Hard layout budget — sum must stay <= 100vh with room for app to peek:
        strip: up to 30vh   |   app visible: at least ~15vh   |   sheet: up to 55vh  */
-  #refStripImg { display:block; height:var(--refH,240px); max-height:30vh; width:auto; max-width:none; }
+  #refStripImg { display:block; height:var(--refH,240px); max-height:30vh; width:auto; max-width:none; border-radius:11px; transition:filter .15s; }
+  #refStripImg.enhanced { filter:contrast(1.55) brightness(1.06); }
   body.picker-open #refStripImg { max-height:25vh; }
-  #refStripBar { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:0 14px; }
-  #refStripBar .left { display:flex; gap:6px; align-items:center; color:var(--muted); font-size:12px; }
-  #refStrip .miniBtn { white-space:nowrap; padding:4px 8px; font-size:11px; }
+  #refStripBar { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:0; }
+  #refStripBar .left { display:flex; gap:6px; align-items:center; color:var(--faint); font-size:11px; letter-spacing:.02em; }
+  #refStrip .miniBtn { white-space:nowrap; padding:5px 9px; font-size:11px; }
+  #refStrip .miniBtn.active { background:var(--accent-soft); border-color:rgba(91,124,250,.5); color:var(--accent-bright); }
 
   /* Picker — fixed bottom sheet that does NOT block page scroll */
   .backdrop { position:fixed; inset:0; background:transparent; pointer-events:none; display:none; align-items:flex-end; z-index:40; }
@@ -208,8 +210,9 @@
     <img id="refStripImg" alt="" />
   </div>
   <div id="refStripBar">
-    <div class="left">Swipe ↔ to read · pinch on the image area is disabled</div>
+    <div class="left">Swipe ↔ to read</div>
     <div style="display:flex; gap:6px">
+      <button class="miniBtn" id="refEnhanceBtn" type="button">Enhance</button>
       <button class="miniBtn" id="refShrinkBtn" type="button">−</button>
       <button class="miniBtn" id="refGrowBtn" type="button">+</button>
       <button class="miniBtn" id="refRemoveBtn" type="button">Remove</button>
@@ -749,7 +752,19 @@ function showRefStripFromStorage(){
     $("refStrip").style.display = "none";
   }
   applyRefHeight();
+  applyRefEnhance();
 }
+// Non-destructive contrast/brightness boost for faint schedule photos.
+function applyRefEnhance(){
+  const on = localStorage.getItem("refEnhance") === "1";
+  $("refStripImg").classList.toggle("enhanced", on);
+  $("refEnhanceBtn").classList.toggle("active", on);
+}
+$("refEnhanceBtn").addEventListener("click", () => {
+  const on = localStorage.getItem("refEnhance") === "1";
+  localStorage.setItem("refEnhance", on ? "0" : "1");
+  applyRefEnhance();
+});
 function applyRefHeight(){
   const h = parseInt(localStorage.getItem("refH") || "240", 10);
   document.documentElement.style.setProperty("--refH", h + "px");
