@@ -78,7 +78,10 @@
     background:#000; border-radius:0;
     padding:0 14px;
   }
-  #refStripImg { display:block; height:var(--refH,200px); width:auto; max-width:none; }
+  #refStripImg { display:block; height:var(--refH,240px); max-height:40vh; width:auto; max-width:none; }
+  /* When picker is open, force strip even shorter so the sheet never overlaps it */
+  body.picker-open #refStripImg { max-height:28vh; }
+  body.picker-open #refStripBar { display:none; }
   #refStripBar { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:0 14px; }
   #refStripBar .left { display:flex; gap:6px; align-items:center; color:var(--muted); font-size:12px; }
   #refStrip .miniBtn { white-space:nowrap; padding:4px 8px; font-size:11px; }
