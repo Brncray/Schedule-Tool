@@ -78,10 +78,10 @@
     background:#000; border-radius:0;
     padding:0 14px;
   }
-  #refStripImg { display:block; height:var(--refH,240px); max-height:40vh; width:auto; max-width:none; }
-  /* When picker is open, force strip even shorter so the sheet never overlaps it */
-  body.picker-open #refStripImg { max-height:28vh; }
-  body.picker-open #refStripBar { display:none; }
+  /* Hard layout budget — sum must stay <= 100vh with room for app to peek:
+       strip: up to 30vh   |   app visible: at least ~15vh   |   sheet: up to 55vh  */
+  #refStripImg { display:block; height:var(--refH,240px); max-height:30vh; width:auto; max-width:none; }
+  body.picker-open #refStripImg { max-height:25vh; }
   #refStripBar { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:0 14px; }
   #refStripBar .left { display:flex; gap:6px; align-items:center; color:var(--muted); font-size:12px; }
   #refStrip .miniBtn { white-space:nowrap; padding:4px 8px; font-size:11px; }
@@ -93,8 +93,8 @@
   /* Sticky strip must sit above the sheet so it remains visible */
   #refStrip { z-index:60; }
   /* When picker is open, pad the bottom of the page so content can be scrolled into view above the sheet */
-  body.picker-open { padding-bottom:60vh; }
-  .sheet { width:100%; background:var(--panel); border-top-left-radius:20px; border-top-right-radius:20px; padding:18px 16px calc(env(safe-area-inset-bottom,0) + 18px); max-height:68vh; overflow-y:auto; }
+  body.picker-open { padding-bottom:55vh; }
+  .sheet { width:100%; background:var(--panel); border-top-left-radius:20px; border-top-right-radius:20px; padding:18px 16px calc(env(safe-area-inset-bottom,0) + 18px); max-height:55vh; overflow-y:auto; }
   .sheet h3 { margin:0 0 12px; font-size:18px; display:flex; justify-content:space-between; align-items:center; }
   .sheet h3 .ctx { font-size:13px; color:var(--muted); font-weight:500; }
   .presets { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:10px; }
@@ -511,12 +511,14 @@ function applyRefHeight(){
 }
 showRefStripFromStorage();
 
+// The 30vh CSS cap is the final ceiling; px request just gets clamped by CSS max-height.
+// Lower bound is enforced in JS so the strip stays usable.
 $("refGrowBtn").addEventListener("click", () => {
-  const h = Math.min(520, parseInt(localStorage.getItem("refH") || "240", 10) + 40);
+  const h = Math.min(600, parseInt(localStorage.getItem("refH") || "240", 10) + 40);
   localStorage.setItem("refH", String(h)); applyRefHeight();
 });
 $("refShrinkBtn").addEventListener("click", () => {
-  const h = Math.max(80, parseInt(localStorage.getItem("refH") || "240", 10) - 40);
+  const h = Math.max(100, parseInt(localStorage.getItem("refH") || "240", 10) - 40);
   localStorage.setItem("refH", String(h)); applyRefHeight();
 });
 
