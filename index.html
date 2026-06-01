@@ -70,11 +70,18 @@
     position:sticky; top:0; z-index:30;
     background:var(--bg); padding:6px 0 8px;
     border-bottom:1px solid var(--line); margin:-14px -14px 12px;
-    padding-left:14px; padding-right:14px;
-    display:flex; gap:8px; align-items:center;
+    display:flex; flex-direction:column; gap:6px;
   }
-  #refStripImg { flex:1; min-width:0; max-height:88px; width:100%; object-fit:contain; border-radius:8px; background:#000; }
-  #refStrip .miniBtn { white-space:nowrap; }
+  #refStripScroller {
+    overflow-x:auto; overflow-y:hidden;
+    -webkit-overflow-scrolling:touch; touch-action:pan-x;
+    background:#000; border-radius:0;
+    padding:0 14px;
+  }
+  #refStripImg { display:block; height:var(--refH,200px); width:auto; max-width:none; }
+  #refStripBar { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:0 14px; }
+  #refStripBar .left { display:flex; gap:6px; align-items:center; color:var(--muted); font-size:12px; }
+  #refStrip .miniBtn { white-space:nowrap; padding:4px 8px; font-size:11px; }
 
   /* Picker — fixed bottom sheet that does NOT block page scroll */
   .backdrop { position:fixed; inset:0; background:transparent; pointer-events:none; display:none; align-items:flex-end; z-index:40; }
@@ -123,8 +130,17 @@
 
 <!-- Sticky cropped reference strip (shown after crop is saved) -->
 <div id="refStrip" style="display:none">
-  <img id="refStripImg" alt="" />
-  <button class="miniBtn" id="refRemoveBtn" type="button">Remove</button>
+  <div id="refStripScroller">
+    <img id="refStripImg" alt="" />
+  </div>
+  <div id="refStripBar">
+    <div class="left">Swipe ↔ to read · pinch on the image area is disabled</div>
+    <div style="display:flex; gap:6px">
+      <button class="miniBtn" id="refShrinkBtn" type="button">−</button>
+      <button class="miniBtn" id="refGrowBtn" type="button">+</button>
+      <button class="miniBtn" id="refRemoveBtn" type="button">Remove</button>
+    </div>
+  </div>
 </div>
 
 <div class="panel" id="refPanel">
@@ -484,8 +500,22 @@ function showRefStripFromStorage(){
   } else {
     $("refStrip").style.display = "none";
   }
+  applyRefHeight();
+}
+function applyRefHeight(){
+  const h = parseInt(localStorage.getItem("refH") || "240", 10);
+  document.documentElement.style.setProperty("--refH", h + "px");
 }
 showRefStripFromStorage();
+
+$("refGrowBtn").addEventListener("click", () => {
+  const h = Math.min(520, parseInt(localStorage.getItem("refH") || "240", 10) + 40);
+  localStorage.setItem("refH", String(h)); applyRefHeight();
+});
+$("refShrinkBtn").addEventListener("click", () => {
+  const h = Math.max(80, parseInt(localStorage.getItem("refH") || "240", 10) - 40);
+  localStorage.setItem("refH", String(h)); applyRefHeight();
+});
 
 $("fileInput").addEventListener("change", e => {
   const f = e.target.files[0]; if(!f) return;
@@ -552,8 +582,8 @@ $("cropSaveBtn").addEventListener("click", () => {
   c.width = sourceImage.naturalWidth;
   c.height = h;
   c.getContext("2d").drawImage(sourceImage, 0, y0, sourceImage.naturalWidth, h, 0, 0, sourceImage.naturalWidth, h);
-  // Downscale if very wide to keep localStorage size reasonable
-  const maxW = 1600;
+  // Downscale only if extremely wide — keep enough resolution to read when enlarged
+  const maxW = 3200;
   let outCanvas = c;
   if(c.width > maxW){
     const s = maxW / c.width;
