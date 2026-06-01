@@ -74,10 +74,23 @@
     Tap to take photo or choose image
     <input type="file" id="fileInput" accept="image/*" capture="environment" />
   </label>
-  <img id="preview" alt="" />
+  <div id="cropStage" style="display:none; margin-top:10px; position:relative; touch-action:none; user-select:none;">
+    <img id="preview" alt="" style="display:block; width:100%; border-radius:8px;" />
+    <div id="cropBand" style="position:absolute; left:0; right:0; background:rgba(76,141,255,.22); border-top:2px solid var(--accent); border-bottom:2px solid var(--accent); cursor:grab;"></div>
+    <div id="cropHandleTop" class="cropHandle" style="top:0"></div>
+    <div id="cropHandleBot" class="cropHandle" style="bottom:0"></div>
+  </div>
+  <div class="hint" id="cropHint" style="display:none">Drag the blue band over <b>your row</b> on the schedule. Drag the top/bottom edges to resize.</div>
   <div class="progress" id="progress"></div>
-  <button id="scanBtn" disabled style="margin-top:10px;width:100%">Scan</button>
+  <button id="scanBtn" disabled style="margin-top:10px;width:100%">Read selected row</button>
 </div>
+<style>
+  .cropHandle { position:absolute; left:50%; transform:translateX(-50%); width:48px; height:18px; background:var(--accent); border-radius:6px; cursor:ns-resize; }
+  #cropHandleTop { top:-9px !important; }
+  #cropHandleBot { bottom:-9px !important; }
+  #cropBand { display:none; }
+  #cropStage.ready #cropBand, #cropStage.ready .cropHandle { display:block; }
+</style>
 
 <div class="panel" id="rowPanel" style="display:none">
   <h2 style="margin-top:0">2. Your row<span class="pill" id="matchPill"></span></h2>
@@ -152,12 +165,69 @@ fileInput.addEventListener("change", async e => {
   img.onload = () => {
     sourceImage = img;
     preview.src = url;
-    preview.style.display = "block";
+    $("cropStage").style.display = "block";
+    $("cropStage").classList.add("ready");
+    $("cropHint").style.display = "block";
+    // Default band: middle 8% of image, vertically centered
+    requestAnimationFrame(initCropBand);
     scanBtn.disabled = false;
-    progress.textContent = `Loaded ${img.naturalWidth}×${img.naturalHeight}`;
+    progress.textContent = `Loaded ${img.naturalWidth}×${img.naturalHeight}. Position the band over your row.`;
   };
   img.src = url;
 });
+
+// Crop band state — top/height as fraction of displayed image height
+let bandTopFrac = 0.46, bandHeightFrac = 0.06;
+
+function initCropBand(){
+  applyBand();
+}
+
+function applyBand(){
+  const stage = $("cropStage");
+  const h = preview.clientHeight;
+  const band = $("cropBand");
+  band.style.top = (bandTopFrac * h) + "px";
+  band.style.height = (bandHeightFrac * h) + "px";
+}
+
+// Pointer-based drag for band (move) and handles (resize)
+function attachDrag(el, mode){
+  el.addEventListener("pointerdown", e => {
+    e.preventDefault();
+    el.setPointerCapture(e.pointerId);
+    const startY = e.clientY;
+    const h0 = preview.clientHeight;
+    const startTop = bandTopFrac, startHeight = bandHeightFrac;
+    function move(ev){
+      const dy = (ev.clientY - startY) / h0;
+      if(mode === "move"){
+        bandTopFrac = Math.max(0, Math.min(1 - startHeight, startTop + dy));
+      } else if(mode === "top"){
+        const newTop = Math.max(0, Math.min(startTop + startHeight - 0.01, startTop + dy));
+        const newH = (startTop + startHeight) - newTop;
+        bandTopFrac = newTop; bandHeightFrac = newH;
+      } else if(mode === "bottom"){
+        const newH = Math.max(0.01, Math.min(1 - startTop, startHeight + dy));
+        bandHeightFrac = newH;
+      }
+      applyBand();
+    }
+    function up(){
+      el.releasePointerCapture(e.pointerId);
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", up);
+    }
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+  });
+}
+window.addEventListener("DOMContentLoaded", () => {
+  attachDrag($("cropBand"), "move");
+  attachDrag($("cropHandleTop"), "top");
+  attachDrag($("cropHandleBot"), "bottom");
+});
+window.addEventListener("resize", () => sourceImage && applyBand());
 
 scanBtn.addEventListener("click", scan);
 
@@ -166,53 +236,36 @@ async function scan(){
   scanBtn.disabled = true;
   rowPanel.style.display = "none";
   resultPanel.style.display = "none";
-
-  const targetName = $("nameInput").value.trim();
-  progress.textContent = "Initializing OCR…";
-
-  const worker = await Tesseract.createWorker("eng", 1, {
-    logger: m => { if(m.status && m.progress != null) progress.textContent = `${m.status} ${(m.progress*100|0)}%`; }
-  });
+  $("matchPill").textContent = "manual selection";
 
   try {
-    // Pass 1: find the name's row using full alphabet.
-    // Upscale first — Tesseract needs ~30px tall text for reliable reads, and
-    // phone photos of a full page often have rows only 20-30px tall.
-    progress.textContent = "Preparing image…";
-    const upscaled = upscaleImage(sourceImage, 2400); // target long edge
-    progress.textContent = "Looking for your name…";
-    const full = await worker.recognize(upscaled);
-    console.log("Pass 1 full text:", full.data.text);
-    const rowBox = findNameRow(full.data, targetName);
-    if(!rowBox){
-      // Show what OCR actually saw so user can see why it missed.
-      const snippet = (full.data.text || "").split("\n").filter(l=>l.trim()).slice(0,30).join(" | ");
-      progress.textContent = "Name not found. OCR saw: " + snippet.slice(0, 300) + "…";
-      $("matchPill").textContent = "not found";
-      await worker.terminate();
-      scanBtn.disabled = false;
-      return;
-    }
-    $("matchPill").textContent = `matched "${rowBox.matchedText}"`;
+    // Crop the selected band from the natural-res source image.
+    const natY0 = Math.round(bandTopFrac * sourceImage.naturalHeight);
+    const natH = Math.round(bandHeightFrac * sourceImage.naturalHeight);
+    let rowCanvas = cropCanvas(sourceImage, 0, natY0, sourceImage.naturalWidth, natH);
 
-    // Crop row from the UPSCALED image (bbox coords match upscaled).
-    const pad = Math.round((rowBox.y1 - rowBox.y0) * 0.20);
-    const ry0 = Math.max(0, rowBox.y0 - pad);
-    const ry1 = Math.min(upscaled.height, rowBox.y1 + pad);
-    const rowCanvas = cropCanvas(upscaled, 0, ry0, upscaled.width, ry1 - ry0);
+    // Upscale the strip to ~2400px wide for OCR-friendly size, then binarize.
+    rowCanvas = upscaleCanvas(rowCanvas, 2400);
+    rowCanvas = binarize(rowCanvas);
     $("rowPreview").src = rowCanvas.toDataURL();
     $("rowPreview").style.display = "block";
 
-    // Pass 2: OCR just that row with digit whitelist
-    progress.textContent = "Reading shift times…";
+    progress.textContent = "Initializing OCR…";
+    const worker = await Tesseract.createWorker("eng", 1, {
+      logger: m => { if(m.status && m.progress != null) progress.textContent = `${m.status} ${(m.progress*100|0)}%`; }
+    });
     await worker.setParameters({
       tessedit_char_whitelist: "0123456789- ",
-      preserve_interword_spaces: "1"
+      preserve_interword_spaces: "1",
+      tessedit_pageseg_mode: "6" // assume a single uniform block of text
     });
+    progress.textContent = "Reading shift times…";
     const rowOcr = await worker.recognize(rowCanvas);
+    console.log("Row OCR text:", rowOcr.data.text);
+    await worker.terminate();
 
-    // Split right portion (after name column) into 14 equal cells, bucket words by x-center
-    const cellStartX = rowBox.x1 + 4; // start just after the name's right edge
+    // Assume the leftmost ~20% is the employee name column; ignore it.
+    const cellStartX = rowCanvas.width * 0.20;
     const cellEndX = rowCanvas.width;
     const cellWidth = (cellEndX - cellStartX) / 14;
     const cells = Array.from({length:14}, () => []);
@@ -237,10 +290,47 @@ async function scan(){
   } catch(err){
     console.error(err);
     progress.textContent = "Error: " + err.message;
+    scanBtn.disabled = false;
   } finally {
-    await worker.terminate();
     scanBtn.disabled = false;
   }
+}
+
+// Upscale a canvas so its width = targetWidth (or larger).
+function upscaleCanvas(src, targetWidth){
+  const scale = Math.max(1, targetWidth / src.width);
+  const w = Math.round(src.width * scale);
+  const h = Math.round(src.height * scale);
+  const c = document.createElement("canvas");
+  c.width = w; c.height = h;
+  const ctx = c.getContext("2d");
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(src, 0, 0, w, h);
+  return c;
+}
+
+// Convert to grayscale + adaptive threshold so text is pure black on white —
+// Tesseract handles this much better than a noisy photo.
+function binarize(src){
+  const ctx = src.getContext("2d");
+  const img = ctx.getImageData(0, 0, src.width, src.height);
+  const d = img.data;
+  // Compute mean luminance for global threshold (cheap and works for evenly-lit photos)
+  let sum = 0;
+  for(let i=0; i<d.length; i+=4){
+    const lum = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+    sum += lum;
+  }
+  const mean = sum / (d.length/4);
+  const thresh = mean * 0.85; // slight bias toward black to preserve thin strokes
+  for(let i=0; i<d.length; i+=4){
+    const lum = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+    const v = lum < thresh ? 0 : 255;
+    d[i] = d[i+1] = d[i+2] = v;
+  }
+  ctx.putImageData(img, 0, 0);
+  return src;
 }
 
 // Find the row containing the target name. Uses substring + fuzzy matching
