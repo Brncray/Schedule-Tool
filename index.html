@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<title>Schedule Scanner</title>
+<style>
+  :root { --bg:#0f1115; --panel:#181c24; --line:#2a2f3a; --text:#e7eaf0; --muted:#8a93a6; --accent:#4c8dff; --good:#37c26b; --bad:#ff5d5d; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { margin:0; padding:0; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif; }
+  body { padding:14px 14px 120px; max-width:760px; margin:0 auto; }
+  h1 { font-size:20px; margin:0 0 12px; }
+  h2 { font-size:15px; margin:18px 0 8px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:14px; }
+  label { display:block; font-size:13px; color:var(--muted); margin-bottom:6px; }
+  input[type="text"], input[type="number"], input[type="date"], select {
+    width:100%; padding:10px 12px; font-size:16px; border:1px solid var(--line); border-radius:8px;
+    background:#0c0f15; color:var(--text); outline:none;
+  }
+  input:focus { border-color:var(--accent); }
+  button { background:var(--accent); color:white; border:0; padding:11px 14px; font-size:15px; border-radius:8px; font-weight:600; }
+  button.secondary { background:#2a2f3a; }
+  button:disabled { opacity:.5; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; }
+  .row > * { flex:1; min-width:120px; }
+  .file-btn { display:block; width:100%; padding:18px; text-align:center; background:#1d2230; border:2px dashed var(--line); border-radius:12px; color:var(--muted); }
+  .file-btn input { display:none; }
+  #preview { max-width:100%; border-radius:8px; margin-top:10px; display:none; }
+  #rowPreview { max-width:100%; border-radius:6px; margin-top:8px; display:none; image-rendering:auto; }
+  .progress { font-size:13px; color:var(--muted); margin-top:8px; min-height:18px; }
+  table.grid { width:100%; border-collapse:collapse; font-size:13px; }
+  table.grid th { color:var(--muted); font-weight:500; padding:6px 4px; text-align:center; font-size:11px; }
+  table.grid td { padding:3px; }
+  table.grid input { padding:8px 6px; text-align:center; font-size:14px; font-variant-numeric:tabular-nums; }
+  table.grid input.off { color:var(--muted); }
+  .summary { white-space:pre-wrap; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px; background:#0c0f15; padding:12px; border-radius:8px; border:1px solid var(--line); }
+  .stat { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--line); }
+  .stat:last-child { border-bottom:0; }
+  .stat b { font-variant-numeric:tabular-nums; }
+  .hint { font-size:12px; color:var(--muted); margin-top:6px; }
+  .pill { display:inline-block; padding:3px 8px; border-radius:99px; background:#2a2f3a; color:var(--muted); font-size:11px; margin-left:6px; }
+</style>
+</head>
+<body>
+
+<h1>Schedule Scanner</h1>
+
+<div class="panel">
+  <h2 style="margin-top:0">Settings</h2>
+  <div class="row">
+    <div>
+      <label>Your name on schedule</label>
+      <input type="text" id="nameInput" value="Brendon O'Brien" />
+    </div>
+    <div>
+      <label>Hourly rate ($)</label>
+      <input type="number" id="rateInput" inputmode="decimal" step="0.01" value="15.00" />
+    </div>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <div>
+      <label>Week starts (Monday)</label>
+      <input type="date" id="weekStart" />
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <h2 style="margin-top:0">1. Photo</h2>
+  <label class="file-btn">
+    Tap to take photo or choose image
+    <input type="file" id="fileInput" accept="image/*" capture="environment" />
+  </label>
+  <img id="preview" alt="" />
+  <div class="progress" id="progress"></div>
+  <button id="scanBtn" disabled style="margin-top:10px;width:100%">Scan</button>
+</div>
+
+<div class="panel" id="rowPanel" style="display:none">
+  <h2 style="margin-top:0">2. Your row<span class="pill" id="matchPill"></span></h2>
+  <img id="rowPreview" alt="" />
+  <div class="hint">Detected shifts below. Tap any cell to fix it. Use <code>OFF</code> or leave blank for off days.</div>
+  <div style="overflow-x:auto; margin-top:10px">
+    <table class="grid" id="shiftGrid">
+      <thead>
+        <tr id="dayHeader"></tr>
+        <tr id="shiftHeader"></tr>
+      </thead>
+      <tbody>
+        <tr id="shiftRow"></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="panel" id="resultPanel" style="display:none">
+  <h2 style="margin-top:0">3. Totals</h2>
+  <div class="stat"><span>Total hours</span><b id="totalHours">0</b></div>
+  <div class="stat"><span>Estimated pay (before tax)</span><b id="totalPay">$0.00</b></div>
+  <div class="stat"><span>Shifts</span><b id="shiftCount">0</b></div>
+
+  <h2>Summary</h2>
+  <div class="summary" id="summaryText"></div>
+  <div class="row" style="margin-top:10px">
+    <button id="copyBtn">Copy summary</button>
+    <button id="icsBtn" class="secondary">Download .ics for Calendar</button>
+  </div>
+  <div class="hint">On iOS: tap the downloaded <code>.ics</code> file → it opens in Calendar → choose calendar → Add All.</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script>
+const DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+const SHIFTS = ["Day","Night"];
+
+const $ = id => document.getElementById(id);
+const fileInput = $("fileInput");
+const preview = $("preview");
+const scanBtn = $("scanBtn");
+const progress = $("progress");
+const rowPanel = $("rowPanel");
+const resultPanel = $("resultPanel");
+
+let sourceImage = null; // HTMLImageElement
+let cellInputs = []; // 14 inputs
+
+// Default week start = upcoming Monday
+(function initWeek(){
+  const d = new Date();
+  const day = d.getDay(); // 0 Sun .. 6 Sat
+  const diff = (8 - day) % 7 || 7; // next Monday
+  d.setDate(d.getDate() + diff);
+  $("weekStart").value = d.toISOString().slice(0,10);
+})();
+
+// Restore saved settings
+(function restore(){
+  const rate = localStorage.getItem("rate"); if(rate) $("rateInput").value = rate;
+  const name = localStorage.getItem("name"); if(name) $("nameInput").value = name;
+})();
+$("rateInput").addEventListener("change", e => { localStorage.setItem("rate", e.target.value); recompute(); });
+$("nameInput").addEventListener("change", e => localStorage.setItem("name", e.target.value));
+$("weekStart").addEventListener("change", recompute);
+
+fileInput.addEventListener("change", async e => {
+  const f = e.target.files[0]; if(!f) return;
+  const url = URL.createObjectURL(f);
+  const img = new Image();
+  img.onload = () => {
+    sourceImage = img;
+    preview.src = url;
+    preview.style.display = "block";
+    scanBtn.disabled = false;
+    progress.textContent = `Loaded ${img.naturalWidth}×${img.naturalHeight}`;
+  };
+  img.src = url;
+});
+
+scanBtn.addEventListener("click", scan);
+
+async function scan(){
+  if(!sourceImage) return;
+  scanBtn.disabled = true;
+  rowPanel.style.display = "none";
+  resultPanel.style.display = "none";
+
+  const targetName = $("nameInput").value.trim();
+  progress.textContent = "Initializing OCR…";
+
+  const worker = await Tesseract.createWorker("eng", 1, {
+    logger: m => { if(m.status && m.progress != null) progress.textContent = `${m.status} ${(m.progress*100|0)}%`; }
+  });
+
+  try {
+    // Pass 1: find the name's row using full alphabet
+    progress.textContent = "Looking for your name…";
+    const full = await worker.recognize(sourceImage);
+    const rowBox = findNameRow(full.data, targetName);
+    if(!rowBox){
+      progress.textContent = "Couldn't find your name. Try a clearer photo or check the name field.";
+      $("matchPill").textContent = "not found";
+      await worker.terminate();
+      scanBtn.disabled = false;
+      return;
+    }
+    $("matchPill").textContent = `matched "${rowBox.matchedText}"`;
+
+    // Crop row: full image width, just the row's vertical band, with padding
+    const pad = Math.round((rowBox.y1 - rowBox.y0) * 0.15);
+    const ry0 = Math.max(0, rowBox.y0 - pad);
+    const ry1 = Math.min(sourceImage.naturalHeight, rowBox.y1 + pad);
+    const rowCanvas = cropCanvas(sourceImage, 0, ry0, sourceImage.naturalWidth, ry1 - ry0);
+    $("rowPreview").src = rowCanvas.toDataURL();
+    $("rowPreview").style.display = "block";
+
+    // Pass 2: OCR just that row with digit whitelist
+    progress.textContent = "Reading shift times…";
+    await worker.setParameters({
+      tessedit_char_whitelist: "0123456789- ",
+      preserve_interword_spaces: "1"
+    });
+    const rowOcr = await worker.recognize(rowCanvas);
+
+    // Split right portion (after name column) into 14 equal cells, bucket words by x-center
+    const cellStartX = rowBox.x1 + 4; // start just after the name's right edge
+    const cellEndX = rowCanvas.width;
+    const cellWidth = (cellEndX - cellStartX) / 14;
+    const cells = Array.from({length:14}, () => []);
+    const words = (rowOcr.data.words || []).filter(w => w.text && w.text.trim());
+    for(const w of words){
+      const cx = (w.bbox.x0 + w.bbox.x1) / 2;
+      if(cx < cellStartX) continue;
+      const idx = Math.floor((cx - cellStartX) / cellWidth);
+      if(idx < 0 || idx > 13) continue;
+      cells[idx].push({text: w.text.trim(), x: w.bbox.x0});
+    }
+    const cellTexts = cells.map(arr => {
+      arr.sort((a,b)=>a.x-b.x);
+      return cleanShift(arr.map(a=>a.text).join(" "));
+    });
+
+    renderGrid(cellTexts);
+    progress.textContent = "Done. Review and fix any cells.";
+    rowPanel.style.display = "block";
+    resultPanel.style.display = "block";
+    recompute();
+  } catch(err){
+    console.error(err);
+    progress.textContent = "Error: " + err.message;
+  } finally {
+    await worker.terminate();
+    scanBtn.disabled = false;
+  }
+}
+
+// Find the row containing the target name. Tesseract gives us .lines with bbox.
+function findNameRow(data, target){
+  const norm = s => s.toLowerCase().replace(/[^a-z]/g,"");
+  const t = norm(target);
+  if(!t) return null;
+  // Try several fragments — last name alone is most distinctive
+  const parts = target.split(/\s+/).filter(Boolean);
+  const last = parts[parts.length-1] || target;
+  const tryTokens = [t, norm(last), norm(parts[0]||"")];
+
+  const lines = data.lines || [];
+  let best = null;
+  for(const line of lines){
+    const ln = norm(line.text);
+    if(!ln) continue;
+    for(const tok of tryTokens){
+      if(tok.length < 3) continue;
+      if(ln.includes(tok)){
+        // Locate the name token's bbox within the line by scanning words
+        const nameWords = (line.words||[]).filter(w => norm(w.text).length>0);
+        let x0=line.bbox.x0, x1=line.bbox.x0, y0=line.bbox.y0, y1=line.bbox.y1;
+        // Find rightmost word that's still part of the name (first 2-3 words usually)
+        if(nameWords.length){
+          // assume first 1-3 words are the name
+          const takeN = Math.min(nameWords.length, parts.length);
+          x0 = nameWords[0].bbox.x0;
+          x1 = nameWords[takeN-1].bbox.x1;
+          y0 = Math.min(...nameWords.slice(0,takeN).map(w=>w.bbox.y0));
+          y1 = Math.max(...nameWords.slice(0,takeN).map(w=>w.bbox.y1));
+        }
+        const match = { x0, x1, y0, y1, matchedText: line.text.trim().slice(0,40) };
+        if(!best || tok === t) { best = match; if(tok===t) return best; }
+      }
+    }
+  }
+  return best;
+}
+
+function cropCanvas(img, x, y, w, h){
+  const c = document.createElement("canvas");
+  c.width = w; c.height = h;
+  const ctx = c.getContext("2d");
+  ctx.drawImage(img, x, y, w, h, 0, 0, w, h);
+  return c;
+}
+
+function cleanShift(s){
+  if(!s) return "";
+  s = s.replace(/\s+/g," ").trim();
+  // Common forms: "9-5", "9 -5", "11- 5", "10 5", or single number = garbage
+  s = s.replace(/(\d+)\s*-\s*(\d+)/, "$1-$2");
+  // If it's two numbers separated by space, join with dash
+  const twoNum = s.match(/^(\d{1,2})\s+(\d{1,2})$/);
+  if(twoNum) s = `${twoNum[1]}-${twoNum[2]}`;
+  // Strip stray dashes
+  if(/^-+$/.test(s)) s = "";
+  return s;
+}
+
+function renderGrid(cellTexts){
+  const dayHeader = $("dayHeader");
+  const shiftHeader = $("shiftHeader");
+  const shiftRow = $("shiftRow");
+  dayHeader.innerHTML = "";
+  shiftHeader.innerHTML = "";
+  shiftRow.innerHTML = "";
+  cellInputs = [];
+
+  for(let d=0; d<7; d++){
+    const th = document.createElement("th");
+    th.colSpan = 2;
+    th.textContent = DAYS[d];
+    dayHeader.appendChild(th);
+  }
+  for(let i=0; i<14; i++){
+    const th = document.createElement("th");
+    th.textContent = SHIFTS[i%2];
+    shiftHeader.appendChild(th);
+
+    const td = document.createElement("td");
+    const inp = document.createElement("input");
+    inp.type = "text";
+    inp.inputMode = "text";
+    inp.autocapitalize = "off";
+    inp.autocomplete = "off";
+    inp.spellcheck = false;
+    inp.placeholder = "OFF";
+    inp.value = cellTexts[i] || "";
+    inp.addEventListener("input", () => { stylize(inp); recompute(); });
+    stylize(inp);
+    td.appendChild(inp);
+    shiftRow.appendChild(td);
+    cellInputs.push(inp);
+  }
+}
+
+function stylize(inp){
+  const v = inp.value.trim().toUpperCase();
+  inp.classList.toggle("off", v === "" || v === "OFF");
+}
+
+// Parse "9-5" → {start:9,end:5} or null. Returns null for OFF/empty/garbage.
+function parseShift(raw){
+  if(!raw) return null;
+  const s = raw.trim().toUpperCase();
+  if(!s || s === "OFF") return null;
+  const m = s.match(/(\d{1,2})\s*[:.]?\s*(\d{0,2})\s*-\s*(\d{1,2})\s*[:.]?\s*(\d{0,2})/);
+  if(!m) return null;
+  const sh = parseInt(m[1],10);
+  const sm = m[2] ? parseInt(m[2],10) : 0;
+  const eh = parseInt(m[3],10);
+  const em = m[4] ? parseInt(m[4],10) : 0;
+  if(sh>23||eh>23||sm>59||em>59) return null;
+  return { sh, sm, eh, em };
+}
+
+// Resolve to actual 24h times based on column kind ("Day" or "Night").
+function resolveTimes(p, kind){
+  let { sh, sm, eh, em } = p;
+  if(kind === "Day"){
+    // Start: hour as AM unless it's already PM-ish like 12. 12 stays 12 (noon).
+    let start = sh; // assume AM
+    if(start === 12) start = 12; // noon
+    // End: if end < start (mod 24), interpret end as PM. e.g., 9-5 → end 5 → 17.
+    let end = eh;
+    if(end < start) end += 12;
+    if(end === start && eh === 12) end = 12;
+    return { startH: start, startM: sm, endH: end, endM: em, crossesMidnight:false };
+  } else {
+    // Night: start is PM (add 12 if <12 and not already 12)
+    let start = sh < 12 ? sh + 12 : sh;
+    // End: typically later same day or next morning
+    let end = eh;
+    if(end < 12 && end <= 11 && (start >= 18 || start === 12)) {
+      // wraps midnight: end is AM next day
+      end = eh; // keep as next-day AM
+      return { startH: start, startM: sm, endH: end, endM: em, crossesMidnight:true };
+    }
+    if(end < start) end += 12;
+    return { startH: start, startM: sm, endH: end, endM: em, crossesMidnight:false };
+  }
+}
+
+function shiftDurationHours(t){
+  let mins;
+  if(t.crossesMidnight){
+    mins = (24*60 - (t.startH*60 + t.startM)) + (t.endH*60 + t.endM);
+  } else {
+    mins = (t.endH*60 + t.endM) - (t.startH*60 + t.startM);
+  }
+  return mins / 60;
+}
+
+function recompute(){
+  if(!cellInputs.length) return;
+  const weekStart = new Date($("weekStart").value + "T00:00:00");
+  const rate = parseFloat($("rateInput").value) || 0;
+  let totalH = 0, count = 0;
+  const lines = [];
+
+  for(let i=0; i<14; i++){
+    const dayIdx = Math.floor(i/2);
+    const kind = SHIFTS[i%2];
+    const raw = cellInputs[i].value;
+    const p = parseShift(raw);
+    if(!p) continue;
+    const t = resolveTimes(p, kind);
+    const h = shiftDurationHours(t);
+    if(h <= 0 || h > 16) continue; // sanity
+    totalH += h; count++;
+    const date = new Date(weekStart); date.setDate(date.getDate() + dayIdx);
+    const dStr = date.toLocaleDateString(undefined,{weekday:"short", month:"short", day:"numeric"});
+    lines.push(`${dStr.padEnd(14)} ${kind.padEnd(5)} ${raw.trim()}  (${h.toFixed(2)}h)`);
+  }
+
+  $("totalHours").textContent = totalH.toFixed(2);
+  $("totalPay").textContent = "$" + (totalH * rate).toFixed(2);
+  $("shiftCount").textContent = count;
+
+  const header = `${$("nameInput").value} — week of ${weekStart.toLocaleDateString()}`;
+  const footer = `\nTotal: ${totalH.toFixed(2)}h  •  Est. pay @ $${rate.toFixed(2)}/h: $${(totalH*rate).toFixed(2)}`;
+  $("summaryText").textContent = header + "\n\n" + (lines.join("\n") || "(no shifts)") + "\n" + footer;
+}
+
+$("copyBtn").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText($("summaryText").textContent);
+    $("copyBtn").textContent = "Copied ✓";
+    setTimeout(()=>$("copyBtn").textContent="Copy summary", 1500);
+  } catch { alert("Copy failed — long-press the summary instead."); }
+});
+
+$("icsBtn").addEventListener("click", () => {
+  const weekStart = new Date($("weekStart").value + "T00:00:00");
+  const events = [];
+  for(let i=0; i<14; i++){
+    const dayIdx = Math.floor(i/2);
+    const kind = SHIFTS[i%2];
+    const raw = cellInputs[i].value;
+    const p = parseShift(raw); if(!p) continue;
+    const t = resolveTimes(p, kind);
+    const h = shiftDurationHours(t); if(h<=0||h>16) continue;
+    const start = new Date(weekStart); start.setDate(start.getDate()+dayIdx);
+    start.setHours(t.startH, t.startM, 0, 0);
+    const end = new Date(start);
+    end.setMinutes(end.getMinutes() + Math.round(h*60));
+    events.push({ start, end, title:`Work (${kind})` });
+  }
+  if(!events.length){ alert("No shifts to export."); return; }
+
+  const fmt = d => d.getFullYear().toString().padStart(4,"0") +
+    String(d.getMonth()+1).padStart(2,"0") +
+    String(d.getDate()).padStart(2,"0") + "T" +
+    String(d.getHours()).padStart(2,"0") +
+    String(d.getMinutes()).padStart(2,"0") + "00";
+  const lines = ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//ScheduleScanner//EN","CALSCALE:GREGORIAN"];
+  for(const ev of events){
+    const uid = `${ev.start.getTime()}-${Math.random().toString(36).slice(2,8)}@schedule`;
+    lines.push("BEGIN:VEVENT","UID:"+uid,"SUMMARY:"+ev.title,"DTSTART:"+fmt(ev.start),"DTEND:"+fmt(ev.end),"END:VEVENT");
+  }
+  lines.push("END:VCALENDAR");
+  const blob = new Blob([lines.join("\r\n")], {type:"text/calendar"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "schedule.ics";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+});
+</script>
+</body>
+</html>
