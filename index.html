@@ -54,14 +54,37 @@
   /* Reference photo */
   .file-btn { display:block; width:100%; padding:14px; text-align:center; background:#1d2230; border:2px dashed var(--line); border-radius:12px; color:var(--muted); font-size:14px; }
   .file-btn input { display:none; }
-  #refImg { max-width:100%; border-radius:10px; margin-top:10px; display:none; }
   details summary { cursor:pointer; color:var(--muted); font-size:13px; padding:4px 0; }
   details[open] summary { margin-bottom:8px; }
 
-  /* Modal picker */
-  .backdrop { position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:flex-end; z-index:50; }
+  /* Crop UI */
+  #cropBand { position:absolute; left:0; right:0; background:rgba(76,141,255,.22); border-top:2px solid var(--accent); border-bottom:2px solid var(--accent); cursor:grab; }
+  .cropHandle { position:absolute; left:50%; transform:translateX(-50%); width:54px; height:20px; background:var(--accent); border-radius:6px; cursor:ns-resize; }
+  #cropHandleTop { top:-10px !important; }
+  #cropHandleBot { bottom:-10px !important; }
+  #cropBand, .cropHandle { display:none; }
+  #cropStage.ready #cropBand, #cropStage.ready .cropHandle { display:block; }
+
+  /* Sticky cropped reference strip — visible while picking shifts */
+  #refStrip {
+    position:sticky; top:0; z-index:30;
+    background:var(--bg); padding:6px 0 8px;
+    border-bottom:1px solid var(--line); margin:-14px -14px 12px;
+    padding-left:14px; padding-right:14px;
+    display:flex; gap:8px; align-items:center;
+  }
+  #refStripImg { flex:1; min-width:0; max-height:88px; width:100%; object-fit:contain; border-radius:8px; background:#000; }
+  #refStrip .miniBtn { white-space:nowrap; }
+
+  /* Picker — fixed bottom sheet that does NOT block page scroll */
+  .backdrop { position:fixed; inset:0; background:transparent; pointer-events:none; display:none; align-items:flex-end; z-index:40; }
   .backdrop.show { display:flex; }
-  .sheet { width:100%; background:var(--panel); border-top-left-radius:20px; border-top-right-radius:20px; padding:18px 16px calc(env(safe-area-inset-bottom,0) + 18px); max-height:90vh; overflow-y:auto; }
+  .backdrop .sheet { pointer-events:auto; box-shadow:0 -8px 24px rgba(0,0,0,.5); }
+  /* Sticky strip must sit above the sheet so it remains visible */
+  #refStrip { z-index:60; }
+  /* When picker is open, pad the bottom of the page so content can be scrolled into view above the sheet */
+  body.picker-open { padding-bottom:60vh; }
+  .sheet { width:100%; background:var(--panel); border-top-left-radius:20px; border-top-right-radius:20px; padding:18px 16px calc(env(safe-area-inset-bottom,0) + 18px); max-height:68vh; overflow-y:auto; }
   .sheet h3 { margin:0 0 12px; font-size:18px; display:flex; justify-content:space-between; align-items:center; }
   .sheet h3 .ctx { font-size:13px; color:var(--muted); font-weight:500; }
   .presets { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:10px; }
@@ -89,7 +112,7 @@
   <div class="row">
     <div>
       <label>Hourly rate ($)</label>
-      <input type="number" id="rateInput" inputmode="decimal" step="0.01" value="15.00" />
+      <input type="number" id="rateInput" inputmode="decimal" step="0.01" value="16.90" />
     </div>
     <div>
       <label>Week starts (Mon)</label>
@@ -98,15 +121,32 @@
   </div>
 </div>
 
-<div class="panel">
-  <details>
+<!-- Sticky cropped reference strip (shown after crop is saved) -->
+<div id="refStrip" style="display:none">
+  <img id="refStripImg" alt="" />
+  <button class="miniBtn" id="refRemoveBtn" type="button">Remove</button>
+</div>
+
+<div class="panel" id="refPanel">
+  <details id="refDetails">
     <summary>Reference photo (optional)</summary>
-    <label class="file-btn">
+    <label class="file-btn" id="refUploadLabel">
       Tap to add a photo or scan for reference
       <input type="file" id="fileInput" accept="image/*" />
     </label>
     <div class="hint">Tip: for an auto-cropped scan, use iOS <b>Notes → camera icon → Scan Documents</b>, save to Photos, then upload here.</div>
-    <img id="refImg" alt="" />
+
+    <!-- Crop stage: appears after a photo is loaded, before it's saved as a strip -->
+    <div id="cropStage" style="display:none; margin-top:10px; position:relative; touch-action:none; user-select:none;">
+      <img id="refImg" alt="" style="display:block; width:100%; border-radius:10px;" />
+      <div id="cropBand"></div>
+      <div id="cropHandleTop" class="cropHandle" style="top:0"></div>
+      <div id="cropHandleBot" class="cropHandle" style="bottom:0"></div>
+    </div>
+    <div id="cropActions" class="row" style="margin-top:10px; display:none">
+      <button id="cropSaveBtn">Save crop</button>
+      <button id="cropCancelBtn" class="ghost">Cancel</button>
+    </div>
   </details>
 </div>
 
@@ -263,9 +303,14 @@ function openPicker(idx){
   $("customStart").value = ""; $("customEnd").value = "";
   renderPresets();
   $("picker").classList.add("show");
+  document.body.classList.add("picker-open");
   setTimeout(() => $("customStart").blur(), 0); // don't auto-focus keyboard
 }
-function closePicker(){ $("picker").classList.remove("show"); pickerIdx = -1; }
+function closePicker(){
+  $("picker").classList.remove("show");
+  document.body.classList.remove("picker-open");
+  pickerIdx = -1;
+}
 
 function renderPresets(){
   const g = $("presetsGrid");
@@ -427,12 +472,133 @@ $("icsBtn").addEventListener("click", async () => {
   setTimeout(()=>URL.revokeObjectURL(url), 1000);
 });
 
-// === Reference photo (no processing — just display) ===
+// === Reference photo: upload → crop band → save strip ===
+let bandTopFrac = 0.42, bandHeightFrac = 0.08;
+let sourceImage = null;
+
+function showRefStripFromStorage(){
+  const dataUrl = localStorage.getItem("refStrip");
+  if(dataUrl){
+    $("refStripImg").src = dataUrl;
+    $("refStrip").style.display = "flex";
+  } else {
+    $("refStrip").style.display = "none";
+  }
+}
+showRefStripFromStorage();
+
 $("fileInput").addEventListener("change", e => {
   const f = e.target.files[0]; if(!f) return;
-  $("refImg").src = URL.createObjectURL(f);
-  $("refImg").style.display = "block";
+  const img = new Image();
+  img.onload = () => {
+    sourceImage = img;
+    const stage = $("cropStage");
+    $("refImg").src = img.src;
+    stage.style.display = "block";
+    stage.classList.add("ready");
+    $("cropActions").style.display = "flex";
+    $("refUploadLabel").style.display = "none";
+    bandTopFrac = 0.42; bandHeightFrac = 0.08;
+    requestAnimationFrame(applyBand);
+  };
+  img.src = URL.createObjectURL(f);
 });
+
+function applyBand(){
+  const h = $("refImg").clientHeight;
+  $("cropBand").style.top = (bandTopFrac * h) + "px";
+  $("cropBand").style.height = (bandHeightFrac * h) + "px";
+}
+window.addEventListener("resize", () => { if(sourceImage) applyBand(); });
+
+function attachDrag(el, mode){
+  el.addEventListener("pointerdown", e => {
+    e.preventDefault();
+    el.setPointerCapture(e.pointerId);
+    const startY = e.clientY;
+    const h0 = $("refImg").clientHeight;
+    const startTop = bandTopFrac, startHeight = bandHeightFrac;
+    function move(ev){
+      const dy = (ev.clientY - startY) / h0;
+      if(mode === "move"){
+        bandTopFrac = Math.max(0, Math.min(1 - startHeight, startTop + dy));
+      } else if(mode === "top"){
+        const newTop = Math.max(0, Math.min(startTop + startHeight - 0.01, startTop + dy));
+        bandHeightFrac = (startTop + startHeight) - newTop;
+        bandTopFrac = newTop;
+      } else if(mode === "bottom"){
+        bandHeightFrac = Math.max(0.01, Math.min(1 - startTop, startHeight + dy));
+      }
+      applyBand();
+    }
+    function up(){
+      el.releasePointerCapture(e.pointerId);
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", up);
+    }
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+  });
+}
+attachDrag($("cropBand"), "move");
+attachDrag($("cropHandleTop"), "top");
+attachDrag($("cropHandleBot"), "bottom");
+
+$("cropSaveBtn").addEventListener("click", () => {
+  if(!sourceImage) return;
+  const y0 = Math.round(bandTopFrac * sourceImage.naturalHeight);
+  const h = Math.round(bandHeightFrac * sourceImage.naturalHeight);
+  const c = document.createElement("canvas");
+  c.width = sourceImage.naturalWidth;
+  c.height = h;
+  c.getContext("2d").drawImage(sourceImage, 0, y0, sourceImage.naturalWidth, h, 0, 0, sourceImage.naturalWidth, h);
+  // Downscale if very wide to keep localStorage size reasonable
+  const maxW = 1600;
+  let outCanvas = c;
+  if(c.width > maxW){
+    const s = maxW / c.width;
+    const c2 = document.createElement("canvas");
+    c2.width = maxW; c2.height = Math.round(c.height * s);
+    c2.getContext("2d").drawImage(c, 0, 0, c2.width, c2.height);
+    outCanvas = c2;
+  }
+  const dataUrl = outCanvas.toDataURL("image/jpeg", 0.85);
+  try { localStorage.setItem("refStrip", dataUrl); }
+  catch(err){ alert("Cropped image too large to save. Try a tighter crop."); return; }
+  resetCropUi();
+  showRefStripFromStorage();
+  $("refDetails").open = false;
+});
+
+$("cropCancelBtn").addEventListener("click", resetCropUi);
+
+function resetCropUi(){
+  sourceImage = null;
+  $("fileInput").value = "";
+  $("cropStage").style.display = "none";
+  $("cropStage").classList.remove("ready");
+  $("cropActions").style.display = "none";
+  $("refUploadLabel").style.display = "block";
+}
+
+$("refRemoveBtn").addEventListener("click", () => {
+  if(!confirm("Remove the reference image?")) return;
+  localStorage.removeItem("refStrip");
+  showRefStripFromStorage();
+  $("refDetails").open = true;
+});
+
+// === Service worker for auto-updates ===
+if("serviceWorker" in navigator){
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(()=>{});
+  });
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if(reloaded) return; reloaded = true;
+    location.reload();
+  });
+}
 </script>
 </body>
 </html>
