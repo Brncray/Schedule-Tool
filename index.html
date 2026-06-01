@@ -6,111 +6,115 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
 <link rel="icon" href="data:," />
-<title>Schedule Scanner</title>
+<title>Schedule</title>
 <style>
-  :root { --bg:#0f1115; --panel:#181c24; --line:#2a2f3a; --text:#e7eaf0; --muted:#8a93a6; --accent:#4c8dff; --good:#37c26b; --bad:#ff5d5d; }
+  :root { --bg:#0f1115; --panel:#181c24; --line:#2a2f3a; --text:#e7eaf0; --muted:#8a93a6; --accent:#4c8dff; --good:#37c26b; --bad:#ff5d5d; --off:#3a3f4d; }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  html,body { margin:0; padding:0; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif; }
-  body { padding:14px 14px 120px; max-width:760px; margin:0 auto; }
-  h1 { font-size:20px; margin:0 0 12px; }
-  h2 { font-size:15px; margin:18px 0 8px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; }
-  .panel { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:14px; }
+  html,body { margin:0; padding:0; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif; -webkit-text-size-adjust:100%; }
+  body { padding:14px 14px 140px; max-width:760px; margin:0 auto; }
+  h1 { font-size:20px; margin:0 0 12px; display:flex; align-items:center; justify-content:space-between; }
+  h2 { font-size:13px; margin:18px 0 8px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:14px; }
   label { display:block; font-size:13px; color:var(--muted); margin-bottom:6px; }
-  input[type="text"], input[type="number"], input[type="date"], select {
-    width:100%; padding:10px 12px; font-size:16px; border:1px solid var(--line); border-radius:8px;
+  input[type="text"], input[type="number"], input[type="date"] {
+    width:100%; padding:11px 12px; font-size:16px; border:1px solid var(--line); border-radius:10px;
     background:#0c0f15; color:var(--text); outline:none;
   }
   input:focus { border-color:var(--accent); }
-  button { background:var(--accent); color:white; border:0; padding:11px 14px; font-size:15px; border-radius:8px; font-weight:600; }
+  button { background:var(--accent); color:white; border:0; padding:12px 14px; font-size:15px; border-radius:10px; font-weight:600; cursor:pointer; }
   button.secondary { background:#2a2f3a; }
+  button.ghost { background:transparent; color:var(--text); border:1px solid var(--line); }
+  button.off { background:var(--off); }
   button:disabled { opacity:.5; }
   .row { display:flex; gap:8px; flex-wrap:wrap; }
   .row > * { flex:1; min-width:120px; }
-  .file-btn { display:block; width:100%; padding:18px; text-align:center; background:#1d2230; border:2px dashed var(--line); border-radius:12px; color:var(--muted); }
-  .file-btn input { display:none; }
-  #preview { max-width:100%; border-radius:8px; margin-top:10px; display:none; }
-  #rowPreview { max-width:100%; border-radius:6px; margin-top:8px; display:none; image-rendering:auto; }
-  .progress { font-size:13px; color:var(--muted); margin-top:8px; min-height:18px; }
-  table.grid { width:100%; border-collapse:collapse; font-size:13px; }
-  table.grid th { color:var(--muted); font-weight:500; padding:6px 4px; text-align:center; font-size:11px; }
-  table.grid td { padding:3px; }
-  table.grid input { padding:8px 6px; text-align:center; font-size:14px; font-variant-numeric:tabular-nums; }
-  table.grid input.off { color:var(--muted); }
-  .summary { white-space:pre-wrap; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px; background:#0c0f15; padding:12px; border-radius:8px; border:1px solid var(--line); }
-  .stat { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--line); }
+
+  /* Day cards grid */
+  .days { display:grid; grid-template-columns:1fr; gap:8px; }
+  .day { display:grid; grid-template-columns:78px 1fr 1fr; gap:6px; align-items:stretch; }
+  .day .dayLabel { background:#0c0f15; border:1px solid var(--line); border-radius:10px; padding:8px; display:flex; flex-direction:column; justify-content:center; }
+  .day .dayLabel .dow { font-size:13px; color:var(--muted); }
+  .day .dayLabel .date { font-size:16px; font-weight:600; font-variant-numeric:tabular-nums; }
+  .cell {
+    border:1px solid var(--line); border-radius:10px; background:#0c0f15; color:var(--text);
+    padding:10px 8px; text-align:center; font-size:15px; font-weight:600; min-height:54px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+  }
+  .cell .kind { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; font-weight:500; }
+  .cell.has { color:var(--accent); border-color:#2a3a5e; }
+  .cell.off { color:var(--muted); }
+
+  /* Totals */
+  .stat { display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--line); font-size:15px; }
   .stat:last-child { border-bottom:0; }
   .stat b { font-variant-numeric:tabular-nums; }
-  .hint { font-size:12px; color:var(--muted); margin-top:6px; }
-  .pill { display:inline-block; padding:3px 8px; border-radius:99px; background:#2a2f3a; color:var(--muted); font-size:11px; margin-left:6px; }
+
+  /* Reference photo */
+  .file-btn { display:block; width:100%; padding:14px; text-align:center; background:#1d2230; border:2px dashed var(--line); border-radius:12px; color:var(--muted); font-size:14px; }
+  .file-btn input { display:none; }
+  #refImg { max-width:100%; border-radius:10px; margin-top:10px; display:none; }
+  details summary { cursor:pointer; color:var(--muted); font-size:13px; padding:4px 0; }
+  details[open] summary { margin-bottom:8px; }
+
+  /* Modal picker */
+  .backdrop { position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:flex-end; z-index:50; }
+  .backdrop.show { display:flex; }
+  .sheet { width:100%; background:var(--panel); border-top-left-radius:20px; border-top-right-radius:20px; padding:18px 16px calc(env(safe-area-inset-bottom,0) + 18px); max-height:90vh; overflow-y:auto; }
+  .sheet h3 { margin:0 0 12px; font-size:18px; display:flex; justify-content:space-between; align-items:center; }
+  .sheet h3 .ctx { font-size:13px; color:var(--muted); font-weight:500; }
+  .presets { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:10px; }
+  .presets button { font-size:18px; padding:16px 8px; font-variant-numeric:tabular-nums; }
+  .presets button.add { background:#0c0f15; border:1px dashed var(--line); color:var(--muted); font-size:14px; font-weight:500; }
+  .customRow { display:grid; grid-template-columns:1fr auto 1fr auto; gap:8px; align-items:center; margin-top:6px; }
+  .customRow input { font-size:18px; text-align:center; padding:14px 8px; font-variant-numeric:tabular-nums; }
+  .customRow .dash { color:var(--muted); font-size:18px; text-align:center; }
+  .sheet .actions { display:flex; gap:8px; margin-top:14px; }
+  .sheet .actions button { flex:1; }
+  .removePresetTip { font-size:11px; color:var(--muted); margin-top:6px; text-align:center; }
+
+  .summary { white-space:pre-wrap; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px; background:#0c0f15; padding:12px; border-radius:10px; border:1px solid var(--line); }
+  .hint { font-size:12px; color:var(--muted); margin-top:8px; }
+  .miniBtn { background:transparent; color:var(--muted); border:1px solid var(--line); padding:6px 10px; font-size:12px; border-radius:8px; }
 </style>
 </head>
 <body>
 
-<h1>Schedule Scanner</h1>
+<h1>Schedule
+  <button class="miniBtn" id="clearWeekBtn" title="Clear this week">Clear week</button>
+</h1>
 
 <div class="panel">
-  <h2 style="margin-top:0">Settings</h2>
   <div class="row">
-    <div>
-      <label>Your name on schedule</label>
-      <input type="text" id="nameInput" value="Brendon O'Brien" />
-    </div>
     <div>
       <label>Hourly rate ($)</label>
       <input type="number" id="rateInput" inputmode="decimal" step="0.01" value="15.00" />
     </div>
-  </div>
-  <div class="row" style="margin-top:10px">
     <div>
-      <label>Week starts (Monday)</label>
+      <label>Week starts (Mon)</label>
       <input type="date" id="weekStart" />
     </div>
   </div>
 </div>
 
 <div class="panel">
-  <h2 style="margin-top:0">1. Photo</h2>
-  <label class="file-btn">
-    Tap to take photo or choose image
-    <input type="file" id="fileInput" accept="image/*" capture="environment" />
-  </label>
-  <div id="cropStage" style="display:none; margin-top:10px; position:relative; touch-action:none; user-select:none;">
-    <img id="preview" alt="" style="display:block; width:100%; border-radius:8px;" />
-    <div id="cropBand" style="position:absolute; left:0; right:0; background:rgba(76,141,255,.22); border-top:2px solid var(--accent); border-bottom:2px solid var(--accent); cursor:grab;"></div>
-    <div id="cropHandleTop" class="cropHandle" style="top:0"></div>
-    <div id="cropHandleBot" class="cropHandle" style="bottom:0"></div>
-  </div>
-  <div class="hint" id="cropHint" style="display:none">Drag the blue band over <b>your row</b> on the schedule. Drag the top/bottom edges to resize.</div>
-  <div class="progress" id="progress"></div>
-  <button id="scanBtn" disabled style="margin-top:10px;width:100%">Read selected row</button>
-</div>
-<style>
-  .cropHandle { position:absolute; left:50%; transform:translateX(-50%); width:48px; height:18px; background:var(--accent); border-radius:6px; cursor:ns-resize; }
-  #cropHandleTop { top:-9px !important; }
-  #cropHandleBot { bottom:-9px !important; }
-  #cropBand { display:none; }
-  #cropStage.ready #cropBand, #cropStage.ready .cropHandle { display:block; }
-</style>
-
-<div class="panel" id="rowPanel" style="display:none">
-  <h2 style="margin-top:0">2. Your row<span class="pill" id="matchPill"></span></h2>
-  <img id="rowPreview" alt="" />
-  <div class="hint">Detected shifts below. Tap any cell to fix it. Use <code>OFF</code> or leave blank for off days.</div>
-  <div style="overflow-x:auto; margin-top:10px">
-    <table class="grid" id="shiftGrid">
-      <thead>
-        <tr id="dayHeader"></tr>
-        <tr id="shiftHeader"></tr>
-      </thead>
-      <tbody>
-        <tr id="shiftRow"></tr>
-      </tbody>
-    </table>
-  </div>
+  <details>
+    <summary>Reference photo (optional)</summary>
+    <label class="file-btn">
+      Tap to add a photo of the schedule for reference
+      <input type="file" id="fileInput" accept="image/*" capture="environment" />
+    </label>
+    <img id="refImg" alt="" />
+  </details>
 </div>
 
-<div class="panel" id="resultPanel" style="display:none">
-  <h2 style="margin-top:0">3. Totals</h2>
+<div class="panel">
+  <h2 style="margin-top:0">Shifts</h2>
+  <div class="days" id="daysGrid"></div>
+  <div class="hint">Tap any cell to set the shift. Long-press to copy across the week.</div>
+</div>
+
+<div class="panel">
+  <h2 style="margin-top:0">Totals</h2>
   <div class="stat"><span>Total hours</span><b id="totalHours">0</b></div>
   <div class="stat"><span>Estimated pay (before tax)</span><b id="totalPay">$0.00</b></div>
   <div class="stat"><span>Shifts</span><b id="shiftCount">0</b></div>
@@ -119,498 +123,279 @@
   <div class="summary" id="summaryText"></div>
   <div class="row" style="margin-top:10px">
     <button id="copyBtn">Copy summary</button>
-    <button id="icsBtn" class="secondary">Download .ics for Calendar</button>
+    <button id="icsBtn" class="secondary">Download .ics</button>
   </div>
-  <div class="hint">On iOS: tap the downloaded <code>.ics</code> file → it opens in Calendar → choose calendar → Add All.</div>
+  <div class="hint">On iOS: tap the downloaded <code>.ics</code> → opens in Calendar → choose calendar → Add All.</div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<!-- Picker modal -->
+<div class="backdrop" id="picker">
+  <div class="sheet">
+    <h3><span id="pickerTitle">Set shift</span><span class="ctx" id="pickerCtx"></span></h3>
+    <div class="presets" id="presetsGrid"></div>
+    <div class="removePresetTip">Long-press a preset to remove it.</div>
+    <h2>Custom</h2>
+    <div class="customRow">
+      <input type="text" id="customStart" inputmode="numeric" placeholder="9" maxlength="5" />
+      <span class="dash">–</span>
+      <input type="text" id="customEnd" inputmode="numeric" placeholder="5" maxlength="5" />
+      <button class="ghost" id="customSet">Set</button>
+    </div>
+    <div class="hint">Use whole hours (e.g. <code>9</code>) or <code>H:MM</code> (e.g. <code>5:30</code>). Don't worry about AM/PM — inferred from Day/Night column.</div>
+    <div class="actions">
+      <button id="pickOff" class="off">OFF</button>
+      <button id="pickClear" class="ghost">Clear</button>
+      <button id="pickClose" class="secondary">Close</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
-const SHIFTS = ["Day","Night"];
-
 const $ = id => document.getElementById(id);
-const fileInput = $("fileInput");
-const preview = $("preview");
-const scanBtn = $("scanBtn");
-const progress = $("progress");
-const rowPanel = $("rowPanel");
-const resultPanel = $("resultPanel");
 
-let sourceImage = null; // HTMLImageElement
-let cellInputs = []; // 14 inputs
+// State
+let cells = Array(14).fill(""); // 14 strings: "" / "OFF" / "9-5" / "9:30-5"
+let presets = ["9-5","5-11","11-5","9-4","OFF"];
 
-// Default week start = upcoming Monday
+// Persistence
+function weekKey(){ return "wk:" + ($("weekStart").value || "?"); }
+function saveAll(){
+  localStorage.setItem("rate", $("rateInput").value);
+  localStorage.setItem("presets", JSON.stringify(presets));
+  localStorage.setItem(weekKey(), JSON.stringify(cells));
+}
+function loadWeek(){
+  const raw = localStorage.getItem(weekKey());
+  cells = raw ? JSON.parse(raw) : Array(14).fill("");
+  renderDays(); recompute();
+}
+function loadGlobals(){
+  const rate = localStorage.getItem("rate"); if(rate) $("rateInput").value = rate;
+  const ps = localStorage.getItem("presets"); if(ps){ try { presets = JSON.parse(ps); } catch{} }
+}
+
+// Initial week-start = most recent Monday
 (function initWeek(){
   const d = new Date();
-  const day = d.getDay(); // 0 Sun .. 6 Sat
-  const diff = (8 - day) % 7 || 7; // next Monday
-  d.setDate(d.getDate() + diff);
+  const day = d.getDay(); // 0=Sun..6=Sat
+  const diff = (day + 6) % 7; // days since Monday
+  d.setDate(d.getDate() - diff);
   $("weekStart").value = d.toISOString().slice(0,10);
 })();
 
-// Restore saved settings
-(function restore(){
-  const rate = localStorage.getItem("rate"); if(rate) $("rateInput").value = rate;
-  const name = localStorage.getItem("name"); if(name) $("nameInput").value = name;
-})();
-$("rateInput").addEventListener("change", e => { localStorage.setItem("rate", e.target.value); recompute(); });
-$("nameInput").addEventListener("change", e => localStorage.setItem("name", e.target.value));
-$("weekStart").addEventListener("change", recompute);
+loadGlobals();
+loadWeek();
 
-fileInput.addEventListener("change", async e => {
-  const f = e.target.files[0]; if(!f) return;
-  const url = URL.createObjectURL(f);
-  const img = new Image();
-  img.onload = () => {
-    sourceImage = img;
-    preview.src = url;
-    $("cropStage").style.display = "block";
-    $("cropStage").classList.add("ready");
-    $("cropHint").style.display = "block";
-    // Default band: middle 8% of image, vertically centered
-    requestAnimationFrame(initCropBand);
-    scanBtn.disabled = false;
-    progress.textContent = `Loaded ${img.naturalWidth}×${img.naturalHeight}. Position the band over your row.`;
-  };
-  img.src = url;
+$("rateInput").addEventListener("change", () => { saveAll(); recompute(); });
+$("weekStart").addEventListener("change", () => { loadWeek(); });
+$("clearWeekBtn").addEventListener("click", () => {
+  if(!confirm("Clear all shifts for this week?")) return;
+  cells = Array(14).fill(""); saveAll(); renderDays(); recompute();
 });
 
-// Crop band state — top/height as fraction of displayed image height
-let bandTopFrac = 0.46, bandHeightFrac = 0.06;
-
-function initCropBand(){
-  applyBand();
-}
-
-function applyBand(){
-  const stage = $("cropStage");
-  const h = preview.clientHeight;
-  const band = $("cropBand");
-  band.style.top = (bandTopFrac * h) + "px";
-  band.style.height = (bandHeightFrac * h) + "px";
-}
-
-// Pointer-based drag for band (move) and handles (resize)
-function attachDrag(el, mode){
-  el.addEventListener("pointerdown", e => {
-    e.preventDefault();
-    el.setPointerCapture(e.pointerId);
-    const startY = e.clientY;
-    const h0 = preview.clientHeight;
-    const startTop = bandTopFrac, startHeight = bandHeightFrac;
-    function move(ev){
-      const dy = (ev.clientY - startY) / h0;
-      if(mode === "move"){
-        bandTopFrac = Math.max(0, Math.min(1 - startHeight, startTop + dy));
-      } else if(mode === "top"){
-        const newTop = Math.max(0, Math.min(startTop + startHeight - 0.01, startTop + dy));
-        const newH = (startTop + startHeight) - newTop;
-        bandTopFrac = newTop; bandHeightFrac = newH;
-      } else if(mode === "bottom"){
-        const newH = Math.max(0.01, Math.min(1 - startTop, startHeight + dy));
-        bandHeightFrac = newH;
-      }
-      applyBand();
-    }
-    function up(){
-      el.releasePointerCapture(e.pointerId);
-      el.removeEventListener("pointermove", move);
-      el.removeEventListener("pointerup", up);
-    }
-    el.addEventListener("pointermove", move);
-    el.addEventListener("pointerup", up);
-  });
-}
-window.addEventListener("DOMContentLoaded", () => {
-  attachDrag($("cropBand"), "move");
-  attachDrag($("cropHandleTop"), "top");
-  attachDrag($("cropHandleBot"), "bottom");
-});
-window.addEventListener("resize", () => sourceImage && applyBand());
-
-scanBtn.addEventListener("click", scan);
-
-async function scan(){
-  if(!sourceImage) return;
-  scanBtn.disabled = true;
-  rowPanel.style.display = "none";
-  resultPanel.style.display = "none";
-  $("matchPill").textContent = "manual selection";
-
-  try {
-    // Crop the selected band from the natural-res source image.
-    const natY0 = Math.round(bandTopFrac * sourceImage.naturalHeight);
-    const natH = Math.round(bandHeightFrac * sourceImage.naturalHeight);
-    let rowCanvas = cropCanvas(sourceImage, 0, natY0, sourceImage.naturalWidth, natH);
-
-    // Upscale the strip to ~2400px wide for OCR-friendly size, then binarize.
-    rowCanvas = upscaleCanvas(rowCanvas, 2400);
-    rowCanvas = binarize(rowCanvas);
-    $("rowPreview").src = rowCanvas.toDataURL();
-    $("rowPreview").style.display = "block";
-
-    progress.textContent = "Initializing OCR…";
-    const worker = await Tesseract.createWorker("eng", 1, {
-      logger: m => { if(m.status && m.progress != null) progress.textContent = `${m.status} ${(m.progress*100|0)}%`; }
-    });
-    await worker.setParameters({
-      tessedit_char_whitelist: "0123456789- ",
-      preserve_interword_spaces: "1",
-      tessedit_pageseg_mode: "6" // assume a single uniform block of text
-    });
-    progress.textContent = "Reading shift times…";
-    const rowOcr = await worker.recognize(rowCanvas);
-    console.log("Row OCR text:", rowOcr.data.text);
-    await worker.terminate();
-
-    // Assume the leftmost ~20% is the employee name column; ignore it.
-    const cellStartX = rowCanvas.width * 0.20;
-    const cellEndX = rowCanvas.width;
-    const cellWidth = (cellEndX - cellStartX) / 14;
-    const cells = Array.from({length:14}, () => []);
-    const words = (rowOcr.data.words || []).filter(w => w.text && w.text.trim());
-    for(const w of words){
-      const cx = (w.bbox.x0 + w.bbox.x1) / 2;
-      if(cx < cellStartX) continue;
-      const idx = Math.floor((cx - cellStartX) / cellWidth);
-      if(idx < 0 || idx > 13) continue;
-      cells[idx].push({text: w.text.trim(), x: w.bbox.x0});
-    }
-    const cellTexts = cells.map(arr => {
-      arr.sort((a,b)=>a.x-b.x);
-      return cleanShift(arr.map(a=>a.text).join(" "));
-    });
-
-    renderGrid(cellTexts);
-    progress.textContent = "Done. Review and fix any cells.";
-    rowPanel.style.display = "block";
-    resultPanel.style.display = "block";
-    recompute();
-  } catch(err){
-    console.error(err);
-    progress.textContent = "Error: " + err.message;
-    scanBtn.disabled = false;
-  } finally {
-    scanBtn.disabled = false;
-  }
-}
-
-// Upscale a canvas so its width = targetWidth (or larger).
-function upscaleCanvas(src, targetWidth){
-  const scale = Math.max(1, targetWidth / src.width);
-  const w = Math.round(src.width * scale);
-  const h = Math.round(src.height * scale);
-  const c = document.createElement("canvas");
-  c.width = w; c.height = h;
-  const ctx = c.getContext("2d");
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(src, 0, 0, w, h);
-  return c;
-}
-
-// Convert to grayscale + adaptive threshold so text is pure black on white —
-// Tesseract handles this much better than a noisy photo.
-function binarize(src){
-  const ctx = src.getContext("2d");
-  const img = ctx.getImageData(0, 0, src.width, src.height);
-  const d = img.data;
-  // Compute mean luminance for global threshold (cheap and works for evenly-lit photos)
-  let sum = 0;
-  for(let i=0; i<d.length; i+=4){
-    const lum = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
-    sum += lum;
-  }
-  const mean = sum / (d.length/4);
-  const thresh = mean * 0.85; // slight bias toward black to preserve thin strokes
-  for(let i=0; i<d.length; i+=4){
-    const lum = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
-    const v = lum < thresh ? 0 : 255;
-    d[i] = d[i+1] = d[i+2] = v;
-  }
-  ctx.putImageData(img, 0, 0);
-  return src;
-}
-
-// Find the row containing the target name. Uses substring + fuzzy matching
-// because OCR routinely misreads characters in small text (Brendon → Brendcn, etc).
-function findNameRow(data, target){
-  const norm = s => s.toLowerCase().replace(/[^a-z]/g,"");
-  const t = norm(target);
-  if(!t) return null;
-  const parts = target.split(/\s+/).filter(Boolean);
-  const last = norm(parts[parts.length-1] || target);
-  const first = norm(parts[0] || "");
-
-  const lines = data.lines || [];
-
-  // Tier 1: exact substring of full name or last name (>=4 chars)
-  for(const line of lines){
-    const ln = norm(line.text);
-    if(!ln) continue;
-    if(t.length >= 4 && ln.includes(t)) return makeMatch(line, parts);
-  }
-  for(const line of lines){
-    const ln = norm(line.text);
-    if(!ln) continue;
-    if(last.length >= 4 && ln.includes(last)) return makeMatch(line, parts);
-  }
-
-  // Tier 2: fuzzy match on last name (Levenshtein ratio).
-  // Slide a window over each line and find the best similarity to last name.
-  let best = null;
-  for(const line of lines){
-    const ln = norm(line.text);
-    if(!ln || last.length < 4) continue;
-    for(let i=0; i<=ln.length-last.length; i++){
-      const sub = ln.slice(i, i + last.length);
-      const sim = 1 - lev(sub, last) / last.length;
-      if(sim >= 0.7 && (!best || sim > best.sim)){
-        best = { sim, line };
-      }
-    }
-  }
-  if(best) return makeMatch(best.line, parts);
-
-  // Tier 3: same fuzzy match on first name as last resort
-  for(const line of lines){
-    const ln = norm(line.text);
-    if(!ln || first.length < 4) continue;
-    for(let i=0; i<=ln.length-first.length; i++){
-      const sub = ln.slice(i, i + first.length);
-      const sim = 1 - lev(sub, first) / first.length;
-      if(sim >= 0.75 && (!best || sim > (best?.sim||0))){
-        best = { sim, line };
-      }
-    }
-  }
-  return best ? makeMatch(best.line, parts) : null;
-}
-
-function makeMatch(line, parts){
-  const norm = s => s.toLowerCase().replace(/[^a-z]/g,"");
-  const nameWords = (line.words||[]).filter(w => norm(w.text).length>0);
-  let x0=line.bbox.x0, x1=line.bbox.x0, y0=line.bbox.y0, y1=line.bbox.y1;
-  if(nameWords.length){
-    const takeN = Math.min(nameWords.length, Math.max(parts.length, 2));
-    x0 = nameWords[0].bbox.x0;
-    x1 = nameWords[takeN-1].bbox.x1;
-    y0 = Math.min(...nameWords.slice(0,takeN).map(w=>w.bbox.y0));
-    y1 = Math.max(...nameWords.slice(0,takeN).map(w=>w.bbox.y1));
-  }
-  return { x0, x1, y0, y1, matchedText: line.text.trim().slice(0,40) };
-}
-
-// Levenshtein distance (small strings only — fine here).
-function lev(a, b){
-  const m = a.length, n = b.length;
-  if(!m) return n; if(!n) return m;
-  let prev = new Array(n+1); for(let j=0;j<=n;j++) prev[j]=j;
-  for(let i=1;i<=m;i++){
-    const cur = [i];
-    for(let j=1;j<=n;j++){
-      const cost = a[i-1]===b[j-1] ? 0 : 1;
-      cur[j] = Math.min(cur[j-1]+1, prev[j]+1, prev[j-1]+cost);
-    }
-    prev = cur;
-  }
-  return prev[n];
-}
-
-// Upscale image so long edge ~= targetLong. Returns a canvas Tesseract accepts.
-function upscaleImage(img, targetLong){
-  const long = Math.max(img.naturalWidth, img.naturalHeight);
-  const scale = Math.max(1, targetLong / long);
-  const w = Math.round(img.naturalWidth * scale);
-  const h = Math.round(img.naturalHeight * scale);
-  const c = document.createElement("canvas");
-  c.width = w; c.height = h;
-  const ctx = c.getContext("2d");
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(img, 0, 0, w, h);
-  return c;
-}
-
-function cropCanvas(img, x, y, w, h){
-  const c = document.createElement("canvas");
-  c.width = w; c.height = h;
-  const ctx = c.getContext("2d");
-  ctx.drawImage(img, x, y, w, h, 0, 0, w, h);
-  return c;
-}
-
-function cleanShift(s){
-  if(!s) return "";
-  s = s.replace(/\s+/g," ").trim();
-  // Common forms: "9-5", "9 -5", "11- 5", "10 5", or single number = garbage
-  s = s.replace(/(\d+)\s*-\s*(\d+)/, "$1-$2");
-  // If it's two numbers separated by space, join with dash
-  const twoNum = s.match(/^(\d{1,2})\s+(\d{1,2})$/);
-  if(twoNum) s = `${twoNum[1]}-${twoNum[2]}`;
-  // Strip stray dashes
-  if(/^-+$/.test(s)) s = "";
-  return s;
-}
-
-function renderGrid(cellTexts){
-  const dayHeader = $("dayHeader");
-  const shiftHeader = $("shiftHeader");
-  const shiftRow = $("shiftRow");
-  dayHeader.innerHTML = "";
-  shiftHeader.innerHTML = "";
-  shiftRow.innerHTML = "";
-  cellInputs = [];
-
+// === Render days ===
+function renderDays(){
+  const grid = $("daysGrid");
+  grid.innerHTML = "";
+  const ws = new Date($("weekStart").value + "T00:00:00");
   for(let d=0; d<7; d++){
-    const th = document.createElement("th");
-    th.colSpan = 2;
-    th.textContent = DAYS[d];
-    dayHeader.appendChild(th);
-  }
-  for(let i=0; i<14; i++){
-    const th = document.createElement("th");
-    th.textContent = SHIFTS[i%2];
-    shiftHeader.appendChild(th);
-
-    const td = document.createElement("td");
-    const inp = document.createElement("input");
-    inp.type = "text";
-    inp.inputMode = "text";
-    inp.autocapitalize = "off";
-    inp.autocomplete = "off";
-    inp.spellcheck = false;
-    inp.placeholder = "OFF";
-    inp.value = cellTexts[i] || "";
-    inp.addEventListener("input", () => { stylize(inp); recompute(); });
-    stylize(inp);
-    td.appendChild(inp);
-    shiftRow.appendChild(td);
-    cellInputs.push(inp);
+    const date = new Date(ws); date.setDate(date.getDate()+d);
+    const day = document.createElement("div");
+    day.className = "day";
+    day.innerHTML = `
+      <div class="dayLabel">
+        <div class="dow">${DAYS[d]}</div>
+        <div class="date">${date.getMonth()+1}/${date.getDate()}</div>
+      </div>
+    `;
+    for(let s=0; s<2; s++){
+      const idx = d*2 + s;
+      const btn = document.createElement("button");
+      btn.className = "cell";
+      const v = cells[idx];
+      btn.innerHTML = `<span class="kind">${s===0?"Day":"Night"}</span><span class="val">${v || "—"}</span>`;
+      if(v && v !== "OFF") btn.classList.add("has");
+      if(v === "OFF") btn.classList.add("off");
+      btn.addEventListener("click", () => openPicker(idx));
+      attachLongPress(btn, () => copyAcrossPrompt(idx));
+      day.appendChild(btn);
+    }
+    grid.appendChild(day);
   }
 }
 
-function stylize(inp){
-  const v = inp.value.trim().toUpperCase();
-  inp.classList.toggle("off", v === "" || v === "OFF");
+function attachLongPress(el, fn){
+  let timer = null;
+  const start = e => { timer = setTimeout(() => { timer = null; fn(); }, 550); };
+  const cancel = e => { if(timer){ clearTimeout(timer); timer = null; } };
+  el.addEventListener("pointerdown", start);
+  el.addEventListener("pointerup", cancel);
+  el.addEventListener("pointerleave", cancel);
+  el.addEventListener("pointercancel", cancel);
 }
 
-// Parse "9-5" → {start:9,end:5} or null. Returns null for OFF/empty/garbage.
+function copyAcrossPrompt(idx){
+  const v = cells[idx];
+  if(!v){ return; }
+  const isNight = idx % 2 === 1;
+  const kind = isNight ? "Night" : "Day";
+  const choice = prompt(`Copy "${v}" to which ${kind} cells?\n\n1 = Mon–Fri\n2 = Sat & Sun\n3 = All 7 days\n(cancel to skip)`);
+  if(!choice) return;
+  const targets = choice === "1" ? [0,1,2,3,4]
+                : choice === "2" ? [5,6]
+                : choice === "3" ? [0,1,2,3,4,5,6] : [];
+  for(const d of targets){ cells[d*2 + (isNight?1:0)] = v; }
+  saveAll(); renderDays(); recompute();
+}
+
+// === Picker modal ===
+let pickerIdx = -1;
+function openPicker(idx){
+  pickerIdx = idx;
+  const d = Math.floor(idx/2), s = idx%2;
+  const ws = new Date($("weekStart").value + "T00:00:00");
+  const date = new Date(ws); date.setDate(date.getDate()+d);
+  $("pickerCtx").textContent = `${DAYS[d]} ${date.getMonth()+1}/${date.getDate()} · ${s===0?"Day":"Night"}`;
+  $("customStart").value = ""; $("customEnd").value = "";
+  renderPresets();
+  $("picker").classList.add("show");
+  setTimeout(() => $("customStart").blur(), 0); // don't auto-focus keyboard
+}
+function closePicker(){ $("picker").classList.remove("show"); pickerIdx = -1; }
+
+function renderPresets(){
+  const g = $("presetsGrid");
+  g.innerHTML = "";
+  for(const p of presets){
+    const b = document.createElement("button");
+    b.textContent = p;
+    if(p === "OFF") b.classList.add("off");
+    b.addEventListener("click", () => applyValue(p));
+    attachLongPress(b, () => {
+      if(confirm(`Remove preset "${p}"?`)){
+        presets = presets.filter(x => x !== p);
+        saveAll(); renderPresets();
+      }
+    });
+    g.appendChild(b);
+  }
+}
+
+function applyValue(v){
+  if(pickerIdx < 0) return;
+  cells[pickerIdx] = v;
+  saveAll(); renderDays(); recompute();
+  closePicker();
+}
+
+$("pickOff").addEventListener("click", () => applyValue("OFF"));
+$("pickClear").addEventListener("click", () => applyValue(""));
+$("pickClose").addEventListener("click", closePicker);
+$("picker").addEventListener("click", e => { if(e.target.id === "picker") closePicker(); });
+
+$("customSet").addEventListener("click", () => {
+  const a = $("customStart").value.trim();
+  const b = $("customEnd").value.trim();
+  if(!a || !b) return;
+  if(!/^\d{1,2}(:\d{2})?$/.test(a) || !/^\d{1,2}(:\d{2})?$/.test(b)){
+    alert("Use hours like 9 or 5:30"); return;
+  }
+  const val = `${a}-${b}`;
+  // Add to presets if new (keep list short — max 8)
+  if(!presets.includes(val)){
+    presets = [val, ...presets].slice(0, 8);
+  }
+  saveAll();
+  applyValue(val);
+});
+
+// === Shift parsing & totals ===
 function parseShift(raw){
   if(!raw) return null;
   const s = raw.trim().toUpperCase();
   if(!s || s === "OFF") return null;
-  const m = s.match(/(\d{1,2})\s*[:.]?\s*(\d{0,2})\s*-\s*(\d{1,2})\s*[:.]?\s*(\d{0,2})/);
+  const m = s.match(/(\d{1,2})(?::(\d{2}))?\s*-\s*(\d{1,2})(?::(\d{2}))?/);
   if(!m) return null;
-  const sh = parseInt(m[1],10);
-  const sm = m[2] ? parseInt(m[2],10) : 0;
-  const eh = parseInt(m[3],10);
-  const em = m[4] ? parseInt(m[4],10) : 0;
-  if(sh>23||eh>23||sm>59||em>59) return null;
-  return { sh, sm, eh, em };
+  return {
+    sh: parseInt(m[1],10), sm: m[2] ? parseInt(m[2],10) : 0,
+    eh: parseInt(m[3],10), em: m[4] ? parseInt(m[4],10) : 0
+  };
 }
-
-// Resolve to actual 24h times based on column kind ("Day" or "Night").
-function resolveTimes(p, kind){
+function resolveTimes(p, isNight){
   let { sh, sm, eh, em } = p;
-  if(kind === "Day"){
-    // Start: hour as AM unless it's already PM-ish like 12. 12 stays 12 (noon).
-    let start = sh; // assume AM
-    if(start === 12) start = 12; // noon
-    // End: if end < start (mod 24), interpret end as PM. e.g., 9-5 → end 5 → 17.
-    let end = eh;
+  if(!isNight){
+    let start = sh, end = eh;
     if(end < start) end += 12;
-    if(end === start && eh === 12) end = 12;
-    return { startH: start, startM: sm, endH: end, endM: em, crossesMidnight:false };
+    return { startH:start, startM:sm, endH:end, endM:em, crossesMidnight:false };
   } else {
-    // Night: start is PM (add 12 if <12 and not already 12)
     let start = sh < 12 ? sh + 12 : sh;
-    // End: typically later same day or next morning
     let end = eh;
-    if(end < 12 && end <= 11 && (start >= 18 || start === 12)) {
-      // wraps midnight: end is AM next day
-      end = eh; // keep as next-day AM
-      return { startH: start, startM: sm, endH: end, endM: em, crossesMidnight:true };
+    if(end < 12 && start >= 18){
+      return { startH:start, startM:sm, endH:end, endM:em, crossesMidnight:true };
     }
     if(end < start) end += 12;
-    return { startH: start, startM: sm, endH: end, endM: em, crossesMidnight:false };
+    return { startH:start, startM:sm, endH:end, endM:em, crossesMidnight:false };
   }
 }
-
-function shiftDurationHours(t){
-  let mins;
-  if(t.crossesMidnight){
-    mins = (24*60 - (t.startH*60 + t.startM)) + (t.endH*60 + t.endM);
-  } else {
-    mins = (t.endH*60 + t.endM) - (t.startH*60 + t.startM);
-  }
+function shiftHours(t){
+  const startMins = t.startH*60 + t.startM;
+  const endMins = t.endH*60 + t.endM;
+  const mins = t.crossesMidnight ? (24*60 - startMins) + endMins : endMins - startMins;
   return mins / 60;
 }
 
 function recompute(){
-  if(!cellInputs.length) return;
-  const weekStart = new Date($("weekStart").value + "T00:00:00");
+  const ws = new Date($("weekStart").value + "T00:00:00");
   const rate = parseFloat($("rateInput").value) || 0;
-  let totalH = 0, count = 0;
+  let total = 0, count = 0;
   const lines = [];
-
   for(let i=0; i<14; i++){
-    const dayIdx = Math.floor(i/2);
-    const kind = SHIFTS[i%2];
-    const raw = cellInputs[i].value;
-    const p = parseShift(raw);
-    if(!p) continue;
-    const t = resolveTimes(p, kind);
-    const h = shiftDurationHours(t);
-    if(h <= 0 || h > 16) continue; // sanity
-    totalH += h; count++;
-    const date = new Date(weekStart); date.setDate(date.getDate() + dayIdx);
-    const dStr = date.toLocaleDateString(undefined,{weekday:"short", month:"short", day:"numeric"});
-    lines.push(`${dStr.padEnd(14)} ${kind.padEnd(5)} ${raw.trim()}  (${h.toFixed(2)}h)`);
+    const p = parseShift(cells[i]); if(!p) continue;
+    const t = resolveTimes(p, i%2===1);
+    const h = shiftHours(t);
+    if(h <= 0 || h > 16) continue;
+    total += h; count++;
+    const date = new Date(ws); date.setDate(date.getDate() + Math.floor(i/2));
+    const lbl = `${DAYS[Math.floor(i/2)]} ${date.getMonth()+1}/${date.getDate()}`;
+    const kind = i%2===0 ? "Day" : "Night";
+    lines.push(`${lbl.padEnd(10)} ${kind.padEnd(5)} ${cells[i].padEnd(8)} ${h.toFixed(2)}h`);
   }
-
-  $("totalHours").textContent = totalH.toFixed(2);
-  $("totalPay").textContent = "$" + (totalH * rate).toFixed(2);
+  $("totalHours").textContent = total.toFixed(2);
+  $("totalPay").textContent = "$" + (total * rate).toFixed(2);
   $("shiftCount").textContent = count;
-
-  const header = `${$("nameInput").value} — week of ${weekStart.toLocaleDateString()}`;
-  const footer = `\nTotal: ${totalH.toFixed(2)}h  •  Est. pay @ $${rate.toFixed(2)}/h: $${(totalH*rate).toFixed(2)}`;
+  const header = `Week of ${ws.toLocaleDateString()}`;
+  const footer = `\nTotal: ${total.toFixed(2)}h  •  Est. pay @ $${rate.toFixed(2)}/h: $${(total*rate).toFixed(2)}`;
   $("summaryText").textContent = header + "\n\n" + (lines.join("\n") || "(no shifts)") + "\n" + footer;
 }
 
+// === Export ===
 $("copyBtn").addEventListener("click", async () => {
   try {
     await navigator.clipboard.writeText($("summaryText").textContent);
     $("copyBtn").textContent = "Copied ✓";
     setTimeout(()=>$("copyBtn").textContent="Copy summary", 1500);
-  } catch { alert("Copy failed — long-press the summary instead."); }
+  } catch { alert("Copy failed — long-press the summary text instead."); }
 });
 
 $("icsBtn").addEventListener("click", () => {
-  const weekStart = new Date($("weekStart").value + "T00:00:00");
+  const ws = new Date($("weekStart").value + "T00:00:00");
   const events = [];
   for(let i=0; i<14; i++){
-    const dayIdx = Math.floor(i/2);
-    const kind = SHIFTS[i%2];
-    const raw = cellInputs[i].value;
-    const p = parseShift(raw); if(!p) continue;
-    const t = resolveTimes(p, kind);
-    const h = shiftDurationHours(t); if(h<=0||h>16) continue;
-    const start = new Date(weekStart); start.setDate(start.getDate()+dayIdx);
+    const p = parseShift(cells[i]); if(!p) continue;
+    const t = resolveTimes(p, i%2===1);
+    const h = shiftHours(t); if(h<=0||h>16) continue;
+    const start = new Date(ws); start.setDate(start.getDate()+Math.floor(i/2));
     start.setHours(t.startH, t.startM, 0, 0);
     const end = new Date(start);
     end.setMinutes(end.getMinutes() + Math.round(h*60));
-    events.push({ start, end, title:`Work (${kind})` });
+    events.push({ start, end, title:`Work (${i%2===0?"Day":"Night"})` });
   }
   if(!events.length){ alert("No shifts to export."); return; }
-
-  const fmt = d => d.getFullYear().toString().padStart(4,"0") +
-    String(d.getMonth()+1).padStart(2,"0") +
-    String(d.getDate()).padStart(2,"0") + "T" +
-    String(d.getHours()).padStart(2,"0") +
+  const fmt = d => d.getFullYear() + String(d.getMonth()+1).padStart(2,"0") +
+    String(d.getDate()).padStart(2,"0") + "T" + String(d.getHours()).padStart(2,"0") +
     String(d.getMinutes()).padStart(2,"0") + "00";
-  const lines = ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//ScheduleScanner//EN","CALSCALE:GREGORIAN"];
+  const lines = ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//Schedule//EN","CALSCALE:GREGORIAN"];
   for(const ev of events){
     const uid = `${ev.start.getTime()}-${Math.random().toString(36).slice(2,8)}@schedule`;
     lines.push("BEGIN:VEVENT","UID:"+uid,"SUMMARY:"+ev.title,"DTSTART:"+fmt(ev.start),"DTEND:"+fmt(ev.end),"END:VEVENT");
@@ -618,10 +403,16 @@ $("icsBtn").addEventListener("click", () => {
   lines.push("END:VCALENDAR");
   const blob = new Blob([lines.join("\r\n")], {type:"text/calendar"});
   const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url; a.download = "schedule.ics";
+  const a = document.createElement("a"); a.href = url; a.download = "schedule.ics";
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(url), 1000);
+});
+
+// === Reference photo (no processing — just display) ===
+$("fileInput").addEventListener("change", e => {
+  const f = e.target.files[0]; if(!f) return;
+  $("refImg").src = URL.createObjectURL(f);
+  $("refImg").style.display = "block";
 });
 </script>
 </body>
